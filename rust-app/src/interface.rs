@@ -55,7 +55,9 @@ pub type SignHashParameters = (
     Bip32Key,
 );
 
+pub type ByteDArray<const N: usize> = DArray<Byte, Byte, N>;
+
 pub type MakeTransferTxParameters = (
-    (Bip32Key, DArray<Byte, Byte, 100>),
-    (DArray<Byte, Byte, 100>, DArray<Byte, Byte, 100>),
+    (Bip32Key, ByteDArray<100>),
+    (ByteDArray<100>, ByteDArray<100>),
 );
