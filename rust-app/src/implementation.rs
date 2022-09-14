@@ -520,48 +520,48 @@ impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
     }
 }
 
-pub type MakeTransferTxImplT = impl InterpParser<MakeTransferTxParameters, Returning = ArrayVec<u8, 128_usize>>;
-
 const TX_SIZE: usize = 128;
 type CmdAndPath = (ArrayVec<u8, TX_SIZE>, ArrayVec<u32, 10>);
 
-// type TxtParser = ObserveLengthedBytes<fn () -> (), (), fn(&mut (), &[u8])->(), SubInterp<DefaultInterp>>;
-type TxtParser = SubInterp<DefaultInterp>;
+pub type OptionByteVec<const N: usize> = Option<ArrayVec<u8, N>>;
 
-// pub static TxtP: TxtParser = ObserveLengthedBytes(|| {}, |_:&mut (),_:&[u8]| {}, SubInterp(DefaultInterp), true);
-const TxtP: TxtParser = SubInterp(DefaultInterp);
+type DefT = SubInterp<DefaultInterp>;
+const Def: DefT = SubInterp(DefaultInterp);
 
 const PathRecipientAmountP
   : MoveAction
-    <(SubInterp<DefaultInterp>, TxtParser)
-     , fn((Option<ArrayVec<u32, 10_usize>>, Option<ArrayVec<u8, 100>>)
+    <(DefT, DefT)
+     , fn((Option<ArrayVec<u32, 10_usize>>, OptionByteVec<100>)
           , &mut Option<CmdAndPath>) -> Option<()>
      >
   = MoveAction(
-      (SubInterp(DefaultInterp)
-       , TxtP
-      )
+      ( Def, Def)
     , mkmvfn(|(path, recipient), destination| {
         scroller("first", |w| Ok(write!(w, "recipient: {}", mkstr2(&recipient)?)?))?;
             // with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
             //     scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
             //     Some(())
             // }())}).ok()?;
-            // *destination = Some(path);
+            let cmd_buf = ArrayVec::new();
+            *destination = Some((cmd_buf, path?));
             Some(())
         }),
     );
 
 const NetworkMetaP
   : MoveAction
-    <(TxtParser, TxtParser)
-     , fn ((Option<ArrayVec<u8, 100>>, Option<ArrayVec<u8, 100>>)
+    <(DefT, DefT)
+     , fn ((OptionByteVec<100>, OptionByteVec<100>)
            , &mut Option<CmdAndPath>
            , CmdAndPath) -> Option<()>
      >
 
-  = MoveAction((TxtP, TxtP)
-   , mkmvfnp(|(network, meta), destination, (payload, path)| {
+  = MoveAction((Def, Def)
+   , mkmvfnp(|(network, gasPrice), destination, (payload, path)| {
+       scroller("second", |w| Ok(write!(w, "network: {}, gasPrice: {}"
+                                        , mkstr2(&network)?
+                                        , mkstr2(&gasPrice)?
+       )?))?;
         // with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
         //     scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
         //     Some(())
@@ -570,6 +570,8 @@ const NetworkMetaP
         Some(())
     }),
     );
+
+pub type MakeTransferTxImplT = impl InterpParser<MakeTransferTxParameters, Returning = ArrayVec<u8, 128_usize>>;
 
 pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MoveAction(
     DynBind(PathRecipientAmountP, NetworkMetaP)
