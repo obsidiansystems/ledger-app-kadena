@@ -516,6 +516,73 @@ impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
     }
 }
 
+pub type MakeTransferTxImplT = impl InterpParser<MakeTransferTxParameters, Returning = ArrayVec<u8, 128_usize>>;
+
+const TX_SIZE: usize = 128;
+type CmdAndPath = (ArrayVec<u8, TX_SIZE>, ArrayVec<u32, 10>);
+
+// type TxtParser = ObserveLengthedBytes<fn () -> (), (), fn(&mut (), &[u8])->(), SubInterp<DefaultInterp>>;
+type TxtParser = SubInterp<DefaultInterp>;
+
+// pub static TxtP: TxtParser = ObserveLengthedBytes(|| {}, |_:&mut (),_:&[u8]| {}, SubInterp(DefaultInterp), true);
+const TxtP: TxtParser = SubInterp(DefaultInterp);
+
+const PathRecipientAmountP
+  : MoveAction
+    <(SubInterp<DefaultInterp>, TxtParser)
+     , fn((Option<ArrayVec<u32, 10_usize>>, Option<ArrayVec<u8, 100>>)
+          , &mut Option<CmdAndPath>) -> Option<()>
+     >
+  = MoveAction(
+      (SubInterp(DefaultInterp)
+       , TxtP
+      )
+    , mkmvfn(|(path, recipient), destination| {
+            // with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
+            //     scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
+            //     Some(())
+            // }())}).ok()?;
+            // *destination = Some(path);
+            Some(())
+        }),
+    );
+
+const NetworkMetaP
+  : MoveAction
+    <(TxtParser, TxtParser)
+     , fn ((Option<ArrayVec<u8, 100>>, Option<ArrayVec<u8, 100>>)
+           , &mut Option<CmdAndPath>
+           , CmdAndPath) -> Option<()>
+     >
+
+  = MoveAction((TxtP, TxtP)
+   , mkmvfnp(|(network, meta), destination, (payload, path)| {
+        // with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
+        //     scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
+        //     Some(())
+        // }())}).ok()?;
+        // *destination = Some(path);
+        Some(())
+    }),
+    );
+
+pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MoveAction(
+    DynBind(PathRecipientAmountP, NetworkMetaP)
+    ,
+    mkmvfn(|(payload, path): CmdAndPath, destination: &mut _| {
+        final_accept_prompt(&[&"Sign Transaction Hash?"])?;
+
+        // let hash = [];
+        // By the time we get here, we've approved and just need to do the signature.
+        // let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?[..]).ok()?;
+        // let mut rv = ArrayVec::<u8, 128>::new();
+        // rv.try_extend_from_slice(&sig.0[..]).ok()?;
+        *destination = Some(payload);
+        Some(())
+    }),
+);
+
+
 // The global parser state enum; any parser above that'll be used as the implementation for an APDU
 // must have a field here.
 
@@ -525,6 +592,7 @@ pub enum ParsersState {
     GetAddressState(<GetAddressImplT as ParserCommon<Bip32Key>>::State),
     SignState(<SignImplT as ParserCommon<SignParameters>>::State),
     SignHashState(<SignHashImplT as ParserCommon<SignHashParameters>>::State),
+    MakeTransferTxState(<MakeTransferTxImplT as ParserCommon<MakeTransferTxParameters>>::State),
 }
 
 pub fn reset_parsers_state(state: &mut ParsersState) {
@@ -595,6 +663,27 @@ pub fn get_sign_hash_state(
     }
     match s {
         ParsersState::SignHashState(ref mut a) => a,
+        _ => {
+            panic!("")
+        }
+    }
+}
+
+#[inline(never)]
+pub fn get_make_transfer_tx_state(
+    s: &mut ParsersState,
+) -> &mut <MakeTransferTxImplT as ParserCommon<MakeTransferTxParameters>>::State {
+    match s {
+        ParsersState::MakeTransferTxState(_) => {}
+        _ => {
+            info!("Non-same state found; initializing state.");
+            *s = ParsersState::MakeTransferTxState(<MakeTransferTxImplT as ParserCommon<MakeTransferTxParameters>>::init(
+                &MAKE_TRANSFER_TX_IMPL,
+            ));
+        }
+    }
+    match s {
+        ParsersState::MakeTransferTxState(ref mut a) => a,
         _ => {
             panic!("")
         }
