@@ -54,3 +54,8 @@ pub type SignHashParameters = (
     Array<Byte, 32>,
     Bip32Key,
 );
+
+pub type MakeTransferTxParameters = (
+    (Bip32Key, DArray<Byte, Byte, 100>),
+    (DArray<Byte, Byte, 100>, DArray<Byte, Byte, 100>),
+);
