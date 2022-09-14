@@ -58,6 +58,10 @@ fn mkstr(v: Option<&[u8]>) -> Result<&str, ScrollerError> {
     Ok(from_utf8(v.ok_or(ScrollerError)?)?)
 }
 
+fn mkstr2<const N: usize>(v: &Option<ArrayVec<u8, N>>) -> Result<&str, ScrollerError> {
+    mkstr(v.as_ref().map(|a| a.as_slice()))
+}
+
 pub type GetAddressImplT = impl InterpParser<Bip32Key, Returning = ArrayVec<u8, 128_usize>>;
 pub const GET_ADDRESS_IMPL: GetAddressImplT =
     Action(SubInterp(DefaultInterp), mkfn(|path: &ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u8, 128>>| {
@@ -538,6 +542,7 @@ const PathRecipientAmountP
        , TxtP
       )
     , mkmvfn(|(path, recipient), destination| {
+        scroller("first", |w| Ok(write!(w, "recipient: {}", mkstr2(&recipient)?)?))?;
             // with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
             //     scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
             //     Some(())
