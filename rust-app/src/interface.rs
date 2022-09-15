@@ -58,6 +58,19 @@ pub type SignHashParameters = (
 pub type ByteDArray<const N: usize> = DArray<Byte, Byte, N>;
 
 pub type MakeTransferTxParameters = (
-    (Bip32Key, ByteDArray<100>),
-    (ByteDArray<100>, ByteDArray<100>),
+    (Bip32Key           // path
+     , (Byte            // txType
+     , (ByteDArray<80>  // recipient
+     , (ByteDArray<2>   // recipient_chain
+     , (ByteDArray<64>  // recipient_pubkey
+     , ByteDArray<50>  // amount
+     ))))),
+     // (ByteDArray<100>, ByteDArray<100>)
+    (ByteDArray<20>     // network
+     , (ByteDArray<20>  // gasPrice
+     , (ByteDArray<10>  // gasLimit
+     , (ByteDArray<2>   // chainId
+     , (ByteDArray<12>  // creationTime
+     , ByteDArray<20>  // ttl
+    ))))),
 );

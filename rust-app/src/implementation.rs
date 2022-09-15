@@ -520,44 +520,94 @@ impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
     }
 }
 
+// ----------------------------------------------------------------------------------
+
+fn handle_first_prompt (
+    pkh: PKH, cmd_buf: &mut ArrayString<TX_SIZE>
+        , txType: u8
+        , recipient: &ArrayVec<u8, 80>
+        , recipient_chain: &ArrayVec<u8, 80>
+        , recipient_pubkey: &ArrayVec<u8, 80>
+        , amount: &ArrayVec<u8, 80>
+) -> Result<(), ScrollerError>
+{
+    // TODO: clist amount in decimal
+    let pw = mk_prompt_write(&mut cmd_buf);
+    // curly braces are escaped like '{{', '}}'
+    write!(pw, "{{")?;
+    // {"payload":{"exec":{"data":null,"code":"(coin.transfer \"k:0000000000000000000000000000000000000000000000000000000000000000\" \"k:0000000000000000000000000000000000000000000000000000000000000000\" 0.02)"}}
+    match txType {
+        0 => {
+            write!(pw, "\"payload\":{{\"exec\":{{\"data\":null,\"code\":\"(coin.transfer \\\"k:{}\\\" \\\"k:{}\\\" {})\"}}}}"
+                   , pkh, from_utf8(recipient)?, from_utf8(amount)?)?;
+            write!(pw, ",\"signers\":[{{\"pubKey\":\"k:{}\",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[\"k:{}\",\"k:{}\",{}]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]"
+                   , pkh, pkh, from_utf8(recipient)?, from_utf8(amount)?)?
+        },
+        1 => {
+            
+        },
+        2 => {
+            
+        }
+        _ => {}
+    }
+    Ok(())
+    // scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
+}
 const TX_SIZE: usize = 128;
-type CmdAndPath = (ArrayVec<u8, TX_SIZE>, ArrayVec<u32, 10>);
+type CmdAndPath = (ArrayString<TX_SIZE>, ArrayVec<u32, 10>);
 
 pub type OptionByteVec<const N: usize> = Option<ArrayVec<u8, N>>;
 
-type DefT = SubInterp<DefaultInterp>;
-const Def: DefT = SubInterp(DefaultInterp);
+type SubDefT = SubInterp<DefaultInterp>;
+const SubDef: SubDefT = SubInterp(DefaultInterp);
 
 const PathRecipientAmountP
   : MoveAction
-    <(DefT, DefT)
-     , fn((Option<ArrayVec<u32, 10_usize>>, OptionByteVec<100>)
+    <(SubDefT, (DefaultInterp, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
+     , fn((Option<ArrayVec<u32, 10_usize>>
+           , Option<(Option<u8>, Option<(OptionByteVec<80>, Option<(OptionByteVec<2>, Option<(OptionByteVec<64>, OptionByteVec<50>)>)>)>)>)
           , &mut Option<CmdAndPath>) -> Option<()>
      >
   = MoveAction(
-      ( Def, Def)
-    , mkmvfn(|(path, recipient), destination| {
-        scroller("first", |w| Ok(write!(w, "recipient: {}", mkstr2(&recipient)?)?))?;
-            // with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
-            //     scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
-            //     Some(())
-            // }())}).ok()?;
-            let cmd_buf = ArrayVec::new();
-            *destination = Some((cmd_buf, path?));
+      ( SubDef, (DefaultInterp, (SubDef, (SubDef, (SubDef, SubDef)))))
+    , mkmvfn(|(path, optv1), destination| {
+        let (txType, optv2) = optv1?;
+        let (recipient, optv3) = optv2?;
+        let (recipient_chain, optv4) = optv3?;
+        let (recipient_pubkey, amount) = optv4?;
+        scroller("first", |w| Ok(write!(w, "txType: {}, recipient: {}, recipient_chain: {}, recipient_pubkey: {}, amount: {}"
+                                        , txType.ok_or(ScrollerError)?
+                                        , mkstr2(&recipient)?
+                                        , mkstr2(&recipient_chain)?
+                                        , mkstr2(&recipient_pubkey)?
+                                        , mkstr2(&amount)?
+        )?))?;
+        let mut cmd_buf = ArrayString::new();
+        with_public_keys(&path?, |_, pkh: &PKH| { try_option(|| -> Option<()> {
             Some(())
-        }),
+        }())}).ok()?;
+        *destination = Some((cmd_buf, path?));
+        Some(())
+    }),
     );
 
 const NetworkMetaP
   : MoveAction
-    <(DefT, DefT)
-     , fn ((OptionByteVec<100>, OptionByteVec<100>)
+    <(SubDefT, (SubDefT, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
+     , fn((Option<ArrayVec<u8, 20>>
+           , Option<(OptionByteVec<20>, Option<(OptionByteVec<10>, Option<(OptionByteVec<2>, Option<(OptionByteVec<12>, OptionByteVec<20>)>)>)>)>)
            , &mut Option<CmdAndPath>
            , CmdAndPath) -> Option<()>
      >
 
-  = MoveAction((Def, Def)
-   , mkmvfnp(|(network, gasPrice), destination, (payload, path)| {
+  = MoveAction(
+      ( SubDef, (SubDef, (SubDef, (SubDef, (SubDef, SubDef)))))
+   , mkmvfnp(|(network, optv1), destination, (payload, path)| {
+       let (gasPrice, optv2) = optv1?;
+       let (gasLimit, optv3) = optv2?;
+       let (chainId, optv4) = optv3?;
+       let (creationTime, ttl) = optv4?;
        scroller("second", |w| Ok(write!(w, "network: {}, gasPrice: {}"
                                         , mkstr2(&network)?
                                         , mkstr2(&gasPrice)?
