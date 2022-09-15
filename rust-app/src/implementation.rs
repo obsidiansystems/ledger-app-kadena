@@ -526,13 +526,13 @@ fn handle_first_prompt (
     pkh: &PKH, cmd_buf: &mut ArrayString<TX_SIZE>
         , txType: u8
         , recipient: &ArrayVec<u8, 80>
-        , recipient_chain: &ArrayVec<u8, 2>
+        , _recipient_chain: &ArrayVec<u8, 2>
         , recipient_pubkey: &ArrayVec<u8, 64>
         , amount: &ArrayVec<u8, 50>
 ) -> Option<()>
 {
     // TODO: clist amount in decimal
-    let pw = mk_prompt_write(&mut cmd_buf);
+    let mut pw = mk_prompt_write(cmd_buf);
     // curly braces are escaped like '{{', '}}'
     // The JSON struct begins here, and ends in handle_second_prompt
     write!(pw, "{{").ok()?;
@@ -555,7 +555,34 @@ fn handle_first_prompt (
     // scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
 }
 
-const TX_SIZE: usize = 128;
+fn handle_second_prompt (
+    pkh: &PKH, cmd_buf: &mut ArrayString<TX_SIZE>
+        , network: &ArrayVec<u8, 20>
+        , gasPrice: &ArrayVec<u8, 20>
+        , gasLimit: &ArrayVec<u8, 10>
+        , chainId: &ArrayVec<u8, 2>
+        , creationTime: &ArrayVec<u8, 12>
+        , ttl: &ArrayVec<u8, 20>
+) -> Option<()>
+{
+    let mut pw = mk_prompt_write(cmd_buf);
+    let nonce: u32 = 123123123;
+    write!(pw, ",\"nonce\":{},\"networkId\":\"{}\""
+           , nonce, from_utf8(network).ok()?).ok()?;
+    write!(pw, ",\"meta\":{{\"sender\":\"k:{}\",\"creationTime\":{},\"ttl\":{},\"chainId\":\"{}\",\"gasPrice\":{},\"gasLimit\":{}}}"
+           , pkh, from_utf8(creationTime).ok()?, from_utf8(ttl).ok()?
+           , from_utf8(chainId).ok()?, from_utf8(gasPrice).ok()?, from_utf8(gasLimit).ok()?).ok()?;
+
+    scroller("On Network", |w| Ok(write!(w, "{}", from_utf8(network)?)?))?;
+    scroller("On Chain", |w| Ok(write!(w, "{}", from_utf8(chainId)?)?))?;
+    scroller("Using Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
+    // The JSON struct ends here
+    write!(pw, "}}").ok()?;
+    Some(())
+    // scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
+}
+
+const TX_SIZE: usize = 1000;
 type CmdAndPath = (ArrayString<TX_SIZE>, ArrayVec<u32, 10>);
 
 pub type OptionByteVec<const N: usize> = Option<ArrayVec<u8, N>>;
@@ -585,7 +612,7 @@ const PathRecipientAmountP
                                         , mkstr2(&amount)?
         )?))?;
         let mut cmd_buf = ArrayString::new();
-        with_public_keys(&path?, |_, pkh: &PKH| { try_option(|| -> Option<()> {
+        with_public_keys(path.as_ref()?, |_, pkh: &PKH| { try_option(|| -> Option<()> {
             handle_first_prompt(pkh, &mut cmd_buf, txType?, &recipient?, &recipient_chain?, &recipient_pubkey?, &amount?)?;
             Some(())
         }())}).ok()?;
@@ -605,20 +632,16 @@ const NetworkMetaP
 
   = MoveAction(
       ( SubDef, (SubDef, (SubDef, (SubDef, (SubDef, SubDef)))))
-   , mkmvfnp(|(network, optv1), destination, (payload, path)| {
+   , mkmvfnp(|(network, optv1), destination, (mut cmd_buf, path)| {
        let (gasPrice, optv2) = optv1?;
        let (gasLimit, optv3) = optv2?;
        let (chainId, optv4) = optv3?;
        let (creationTime, ttl) = optv4?;
-       scroller("second", |w| Ok(write!(w, "network: {}, gasPrice: {}"
-                                        , mkstr2(&network)?
-                                        , mkstr2(&gasPrice)?
-       )?))?;
-        // with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
-        //     scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
-        //     Some(())
-        // }())}).ok()?;
-        // *destination = Some(path);
+       with_public_keys(path.as_ref(), |_, pkh: &PKH| { try_option(|| -> Option<()> {
+           handle_second_prompt(pkh, &mut cmd_buf, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+           Some(())
+       }())}).ok()?;
+       *destination = Some((cmd_buf, path));
         Some(())
     }),
     );
@@ -635,6 +658,8 @@ pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MoveAction(
         // By the time we get here, we've approved and just need to do the signature.
         // let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?[..]).ok()?;
         // let mut rv = ArrayVec::<u8, 128>::new();
+
+        info!("payload {}", payload.as_str());
         let mut rv = ArrayVec::<u8, 128>::new();
         rv.try_extend_from_slice(payload.as_bytes()).ok()?;
         *destination = Some(rv);
