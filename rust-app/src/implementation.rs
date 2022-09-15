@@ -523,25 +523,25 @@ impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
 // ----------------------------------------------------------------------------------
 
 fn handle_first_prompt (
-    pkh: PKH, cmd_buf: &mut ArrayString<TX_SIZE>
+    pkh: &PKH, cmd_buf: &mut ArrayString<TX_SIZE>
         , txType: u8
         , recipient: &ArrayVec<u8, 80>
-        , recipient_chain: &ArrayVec<u8, 80>
-        , recipient_pubkey: &ArrayVec<u8, 80>
-        , amount: &ArrayVec<u8, 80>
-) -> Result<(), ScrollerError>
+        , recipient_chain: &ArrayVec<u8, 2>
+        , recipient_pubkey: &ArrayVec<u8, 64>
+        , amount: &ArrayVec<u8, 50>
+) -> Option<()>
 {
     // TODO: clist amount in decimal
     let pw = mk_prompt_write(&mut cmd_buf);
     // curly braces are escaped like '{{', '}}'
-    write!(pw, "{{")?;
-    // {"payload":{"exec":{"data":null,"code":"(coin.transfer \"k:0000000000000000000000000000000000000000000000000000000000000000\" \"k:0000000000000000000000000000000000000000000000000000000000000000\" 0.02)"}}
+    // The JSON struct begins here, and ends in handle_second_prompt
+    write!(pw, "{{").ok()?;
     match txType {
         0 => {
             write!(pw, "\"payload\":{{\"exec\":{{\"data\":null,\"code\":\"(coin.transfer \\\"k:{}\\\" \\\"k:{}\\\" {})\"}}}}"
-                   , pkh, from_utf8(recipient)?, from_utf8(amount)?)?;
+                   , pkh, from_utf8(recipient).ok()?, from_utf8(amount).ok()?).ok()?;
             write!(pw, ",\"signers\":[{{\"pubKey\":\"k:{}\",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[\"k:{}\",\"k:{}\",{}]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]"
-                   , pkh, pkh, from_utf8(recipient)?, from_utf8(amount)?)?
+                   , pkh, pkh, from_utf8(recipient).ok()?, from_utf8(amount).ok()?).ok()?
         },
         1 => {
             
@@ -551,9 +551,10 @@ fn handle_first_prompt (
         }
         _ => {}
     }
-    Ok(())
+    Some(())
     // scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
 }
+
 const TX_SIZE: usize = 128;
 type CmdAndPath = (ArrayString<TX_SIZE>, ArrayVec<u32, 10>);
 
@@ -585,6 +586,7 @@ const PathRecipientAmountP
         )?))?;
         let mut cmd_buf = ArrayString::new();
         with_public_keys(&path?, |_, pkh: &PKH| { try_option(|| -> Option<()> {
+            handle_first_prompt(pkh, &mut cmd_buf, txType?, &recipient?, &recipient_chain?, &recipient_pubkey?, &amount?)?;
             Some(())
         }())}).ok()?;
         *destination = Some((cmd_buf, path?));
@@ -633,8 +635,9 @@ pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MoveAction(
         // By the time we get here, we've approved and just need to do the signature.
         // let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?[..]).ok()?;
         // let mut rv = ArrayVec::<u8, 128>::new();
-        // rv.try_extend_from_slice(&sig.0[..]).ok()?;
-        *destination = Some(payload);
+        let mut rv = ArrayVec::<u8, 128>::new();
+        rv.try_extend_from_slice(payload.as_bytes()).ok()?;
+        *destination = Some(rv);
         Some(())
     }),
 );
