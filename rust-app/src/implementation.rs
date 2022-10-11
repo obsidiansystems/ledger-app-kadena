@@ -1,4 +1,4 @@
-use crate::crypto_helpers::{eddsa_sign, get_pkh, get_private_key, get_pubkey, get_pubkey_from_privkey, Hasher, Hash};
+use crate::crypto_helpers::{eddsa_sign, get_pkh, get_private_key, get_pubkey, get_pubkey_from_privkey, Hasher, Hash, PKH};
 use crate::interface::*;
 use crate::*;
 use arrayvec::ArrayString;
@@ -495,6 +495,168 @@ impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
         }
     }
 }
+
+// ----------------------------------------------------------------------------------
+
+fn handle_first_prompt (
+    pkh: &PKH, cmd_buf: &mut ArrayString<TX_SIZE>
+        , txType: u8
+        , recipient: &ArrayVec<u8, PARAM_RECIPIENT_SIZE>
+        , _recipient_chain: &ArrayVec<u8, PARAM_RECIPIENT_CHAIN_SIZE>
+        , amount: &ArrayVec<u8, PARAM_AMOUNT_SIZE>
+        , network: &ArrayVec<u8, PARAM_NETWORK_SIZE>
+) -> Option<()>
+{
+    // TODO: clist amount in decimal
+    let mut pw = mk_prompt_write(cmd_buf);
+    // curly braces are escaped like '{{', '}}'
+    // The JSON struct begins here, and ends in handle_second_prompt
+    write!(pw, "{{").ok()?;
+    match txType {
+        0 => {
+            write!(pw, "\"payload\":{{\"exec\":{{\"data\":null,\"code\":\"(coin.transfer \\\"k:{}\\\" \\\"k:{}\\\" {})\"}}}}"
+                   , pkh, from_utf8(recipient).ok()?, from_utf8(amount).ok()?).ok()?;
+            write!(pw, ",\"signers\":[{{\"pubKey\":\"k:{}\",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[\"k:{}\",\"k:{}\",{}]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]"
+                   , pkh, pkh, from_utf8(recipient).ok()?, from_utf8(amount).ok()?).ok()?
+        },
+        1 => {
+            
+        },
+        2 => {
+            
+        }
+        _ => {}
+    }
+    write!(pw, ",\"networkId\":\"{}\""
+           , from_utf8(network).ok()?).ok()?;
+    Some(())
+    // write_scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
+}
+
+fn handle_second_prompt (
+    pkh: &PKH, cmd_buf: &mut ArrayString<TX_SIZE>
+        , gasPrice: &ArrayVec<u8, PARAM_GAS_PRICE_SIZE>
+        , gasLimit: &ArrayVec<u8, PARAM_GAS_LIMIT_SIZE>
+        , creationTime: &ArrayVec<u8, PARAM_CREATION_TIME_SIZE>
+        , chainId: &ArrayVec<u8, PARAM_CHAIN_SIZE>
+        , nonce: &ArrayVec<u8, PARAM_NOONCE_SIZE>
+        , ttl: &ArrayVec<u8, PARAM_TTL_SIZE>
+) -> Option<()>
+{
+    let mut pw = mk_prompt_write(cmd_buf);
+    write!(pw, ",\"nonce\":{}", from_utf8(nonce).ok()?).ok()?;
+    write!(pw, ",\"meta\":{{\"sender\":\"k:{}\",\"creationTime\":{},\"ttl\":{},\"chainId\":\"{}\",\"gasPrice\":{},\"gasLimit\":{}}}"
+           , pkh, from_utf8(creationTime).ok()?, from_utf8(ttl).ok()?
+           , from_utf8(chainId).ok()?, from_utf8(gasPrice).ok()?, from_utf8(gasLimit).ok()?).ok()?;
+
+    write_scroller("On Chain", |w| Ok(write!(w, "{}", from_utf8(chainId)?)?))?;
+    write_scroller("Using Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
+    // The JSON struct ends here
+    write!(pw, "}}").ok()?;
+    Some(())
+    // write_scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
+}
+
+const TX_SIZE: usize = 0;
+type CmdAndPath = (ArrayString<TX_SIZE>, ArrayVec<u32, 10>);
+
+pub type OptionByteVec<const N: usize> = Option<ArrayVec<u8, N>>;
+
+type SubDefT = SubInterp<DefaultInterp>;
+const SubDef: SubDefT = SubInterp(DefaultInterp);
+
+const PathRecipientAmountP
+  : MoveAction
+    <(SubDefT, (DefaultInterp, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
+     , fn((Option<ArrayVec<u32, 10_usize>>
+           , Option<(Option<u8>
+           , Option<(OptionByteVec<PARAM_RECIPIENT_SIZE>
+           , Option<(OptionByteVec<PARAM_RECIPIENT_CHAIN_SIZE>
+           , Option<(OptionByteVec<PARAM_NETWORK_SIZE>
+           , OptionByteVec<PARAM_AMOUNT_SIZE>)>)>)>)>)
+          , &mut Option<CmdAndPath>) -> Option<()>
+     >
+  = MoveAction(
+      ( SubDef, (DefaultInterp, (SubDef, (SubDef, (SubDef, SubDef)))))
+    , mkmvfn(|(path, optv1), destination| {
+        let key = get_pubkey(path.as_ref()?).ok()?;
+
+        let pkh = get_pkh(key);
+        let (txType, optv2) = optv1?;
+        let (recipient, optv3) = optv2?;
+        let (recipient_chain, optv4) = optv3?;
+        let (network, amount) = optv4?;
+        // write_scroller("first", |w| Ok(write!(w, "txType: {}, recipient: {}, recipient_chain: {}, recipient_pubkey: {}, amount: {}"
+        //                                 , txType.ok_or(ScrollerError)?
+        //                                 , mkstr2(&recipient)?
+        //                                 , mkstr2(&recipient_chain)?
+        //                                 , mkstr2(&recipient_pubkey)?
+        //                                 , mkstr2(&amount)?
+        // )?))?;
+        let mut cmd_buf = ArrayString::new();
+        handle_first_prompt(&pkh, &mut cmd_buf, txType?, &recipient?, &recipient_chain?, &amount?, &network?)?;
+        // with_public_keys(path.as_ref()?, |_, pkh: &PKH| { try_option(|| -> Option<()> {
+        //     handle_first_prompt(pkh, &mut cmd_buf, txType?, &recipient?, &recipient_chain?, &recipient_pubkey?, &amount?)?;
+        //     Some(())
+        // }())}).ok()?;
+        *destination = Some((cmd_buf, path?));
+        Some(())
+    }),
+    );
+
+const NetworkMetaP
+  : MoveAction
+    <(SubDefT, (SubDefT, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
+     , fn((Option<ArrayVec<u8, PARAM_GAS_PRICE_SIZE>>
+           , Option<(OptionByteVec<PARAM_GAS_LIMIT_SIZE>
+           , Option<(OptionByteVec<PARAM_CREATION_TIME_SIZE>
+           , Option<(OptionByteVec<PARAM_CHAIN_SIZE>
+           , Option<(OptionByteVec<PARAM_NOONCE_SIZE>
+           , OptionByteVec<PARAM_TTL_SIZE>)>)>)>)>)
+           , &mut Option<CmdAndPath>
+           , CmdAndPath) -> Option<()>
+     >
+
+  = MoveAction(
+      ( SubDef, (SubDef, (SubDef, (SubDef, (SubDef, SubDef)))))
+   , mkmvfnp(|(network, optv1), destination, (mut cmd_buf, path)| {
+       let key = get_pubkey(&path).ok()?;
+
+       let pkh = get_pkh(key);
+       let (gasPrice, optv2) = optv1?;
+       let (gasLimit, optv3) = optv2?;
+       let (chainId, optv4) = optv3?;
+       let (creationTime, ttl) = optv4?;
+       handle_second_prompt(&pkh, &mut cmd_buf, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+       // with_public_keys(path.as_ref(), |_, pkh: &PKH| { try_option(|| -> Option<()> {
+       //     handle_second_prompt(pkh, &mut cmd_buf, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+       //     Some(())
+       // }())}).ok()?;
+       *destination = Some((cmd_buf, path));
+        Some(())
+    }),
+    );
+
+pub type MakeTransferTxImplT = impl InterpParser<MakeTransferTxParameters, Returning = ArrayVec<u8, 128_usize>>;
+
+pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MoveAction(
+    DynBind(PathRecipientAmountP, NetworkMetaP)
+    ,
+    mkmvfn(|(payload, path): CmdAndPath, destination: &mut _| {
+        final_accept_prompt(&[&"Sign Transaction Hash?"])?;
+
+        // let hash = [];
+        // By the time we get here, we've approved and just need to do the signature.
+        // let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?[..]).ok()?;
+        // let mut rv = ArrayVec::<u8, 128>::new();
+
+        info!("payload {}", payload.as_str());
+        let mut rv = ArrayVec::<u8, 128>::new();
+        rv.try_extend_from_slice(payload.as_bytes()).ok()?;
+        *destination = Some(rv);
+        Some(())
+    }),
+);
 
 // The global parser state enum; any parser above that'll be used as the implementation for an APDU
 // must have a field here.
