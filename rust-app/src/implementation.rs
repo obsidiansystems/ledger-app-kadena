@@ -527,10 +527,10 @@ fn handle_first_prompt (
             write!(hasher, " \\\"k:{}\\\"", from_utf8(recipient).ok()?).ok()?;
             write!(hasher, "{})\"}}}}", from_utf8(amount).ok()?).ok()?;
             write!(hasher, ",\"signers\":[{{\"pubKey\":").ok()?;
-            write!(hasher, "\"k:{}\"", pkh).ok()?;
+            write!(hasher, "\"{}\"", pkh).ok()?;
             write!(hasher, ",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[").ok()?;
-            write!(hasher, "\"k:{}\"", pkh).ok()?;
-            write!(hasher, "\"k:{}\"", from_utf8(recipient).ok()?).ok()?;
+            write!(hasher, "\"k:{}\",", pkh).ok()?;
+            write!(hasher, "\"k:{}\",", from_utf8(recipient).ok()?).ok()?;
             write!(hasher, "{}", from_utf8(amount).ok()?).ok()?;
             write!(hasher, "]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]").ok()?;
         },
@@ -558,18 +558,14 @@ fn handle_second_prompt (
         , ttl: &ArrayVec<u8, PARAM_TTL_SIZE>
 ) -> Option<()>
 {
-    {
-        
-        // let mut pw = mk_prompt_write(hasher);
-        // write!(pw, ",\"nonce\":{}", from_utf8(nonce).ok()?).ok()?;
-// ,\"ttl\":{},\"chainId\":\"{}\",\"gasPrice\":{},\"gasLimit\":{}}}
-        // write!(pw, ",\"meta\":{{\"sender\":\"k:{}\"", pkh).ok()?;
-        // write!(pw, ",\"creationTime\":{}", from_utf8(creationTime).ok()?).ok()?;
-        // write!(pw, ",\"meta\":{{\"sender\":\"k:{}\",\"creationTime\":{},\"ttl\":{},\"chainId\":\"{}\",\"gasPrice\":{},\"gasLimit\":{}}}"
-        //        , pkh, from_utf8(creationTime).ok()?, from_utf8(ttl).ok()?
-        //        , from_utf8(chainId).ok()?, from_utf8(gasPrice).ok()?, from_utf8(gasLimit).ok()?).ok()?;
-        // write!(pw, "}}").ok()?;
-    }
+    write!(hasher, ",\"nonce\":\"{}\"", from_utf8(nonce).ok()?).ok()?;
+    write!(hasher, ",\"meta\":{{\"sender\":\"k:{}\"", pkh).ok()?;
+    write!(hasher, ",\"gasLimit\":{}", from_utf8(gasLimit).ok()?).ok()?;
+    write!(hasher, ",\"gasPrice\":{}", from_utf8(gasPrice).ok()?).ok()?;
+    write!(hasher, ",\"creationTime\":{}", from_utf8(creationTime).ok()?).ok()?;
+    write!(hasher, ",\"ttl\":{}", from_utf8(ttl).ok()?).ok()?;
+    write!(hasher, ",\"chainId\":{}", from_utf8(chainId).ok()?).ok()?;
+    write!(hasher, "}}}}").ok()?;
 
     // write_scroller("On Chain", |w| Ok(write!(w, "{}", from_utf8(chainId)?)?))?;
     // write_scroller("Using Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
@@ -649,15 +645,20 @@ const MetaNonceP: MetaNonceT
 
   = MoveAction(
       ( SubDef, (SubDef, (SubDef, (SubDef, (SubDef, SubDef)))))
-   , mkmvfn(|(network, optv1): MakeTransferTxParameters2RV, destination| {
-       // let key = get_pubkey(&path).ok()?;
-
-       // let pkh = get_pkh(key);
+   , mkmvfn(|(network, optv1): MakeTransferTxParameters2RV, destination: &mut Option<HasherAndPath>| {
        let (gasPrice, optv2) = optv1?;
        let (gasLimit, optv3) = optv2?;
        let (chainId, optv4) = optv3?;
        let (creationTime, ttl) = optv4?;
-       // handle_second_prompt(&pkh, &mut hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+        match destination {
+            Some((ref mut hasher, path)) => {
+                let key = get_pubkey(&path).ok()?;
+
+                let pkh = get_pkh(key);
+                handle_second_prompt(&pkh, hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+            }
+            _ => {}
+        }
        // with_public_keys(path.as_ref(), |_, pkh: &PKH| { try_option(|| -> Option<()> {
        //     handle_second_prompt(pkh, &mut hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
        //     Some(())
@@ -697,11 +698,11 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
                 }
                 MakeTxSubState::PathRecipientAmount(ref mut sub) => {
                     cursor = <PathRecipientAmountT as InterpParser<MakeTransferTxParameters1>>::parse(&PathRecipientAmountP, sub, cursor, hasherAndPath)?;
-                    panic!("done");
                     set_from_thunk(state, || MakeTxSubState::MetaNonce(<MetaNonceT as ParserCommon<MakeTransferTxParameters2>>::init(&MetaNonceP)))
                 }
                 MakeTxSubState::MetaNonce(ref mut sub) => {
                     cursor = <MetaNonceT as InterpParser<MakeTransferTxParameters2>>::parse(&MetaNonceP, sub, cursor, hasherAndPath)?;
+                    panic!("done");
                     break Ok(cursor);
                 }
             }
