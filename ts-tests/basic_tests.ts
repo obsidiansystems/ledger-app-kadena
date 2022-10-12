@@ -1323,3 +1323,43 @@ describe("Capability Signing tests", function() {
       }, prompts);
   });
 })
+
+function getTransaction(path: string,
+                        recipient: string,
+                        amount: string,
+                        network: string,
+                        chainId: number,
+                        gasPrice: string,
+                        gasLimit: string,
+                        ttl: string,
+                        prompts: any[]) {
+  return async () => {
+    await sendCommandAndAccept(
+      async (kda : Kda) => {
+        let pubkey = (await kda.getPublicKey(path)).publicKey;
+        await Axios.delete("http://0.0.0.0:5000/events");
+        let creationTime = 12345;
+
+        let rv = await kda.transferTx(path, recipient, amount, network, gasPrice, gasLimit, chainId, creationTime, ttl);
+        // expect(rv.signature.length).to.equal(128);
+        // let hash = blake2b(32).update(Buffer.from(txn, "utf-8")).digest();
+        // let pass = nacl.crypto_sign_verify_detached(Buffer.from(rv.signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
+        // expect(pass).to.equal(true);
+      }, prompts);
+  }
+}
+
+describe('Create Tx tests', function() {
+  it("can build a transfer tx",
+     getTransaction(
+       "0/0",
+       'ffd8cd79deb956fa3c7d9be0f836f20ac84b140168a087a842be4760e40e2b1c',
+       "1.23",
+       "testnet04",
+       0,
+       "1.0e-8",
+       "200",
+       "7200",
+       []
+     ));
+  })
