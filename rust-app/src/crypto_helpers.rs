@@ -1,5 +1,7 @@
 use core::default::Default;
 use core::fmt;
+use core::fmt::Write;
+use arrayvec::ArrayString;
 use nanos_sdk::bindings::*;
 use nanos_sdk::io::SyscallError;
 use ledger_log::*;
@@ -153,6 +155,20 @@ impl Hasher {
         unsafe { cx_hash_final(&mut self.0 as *mut cx_blake2b_s as *mut cx_hash_t, rv.as_mut_ptr()) };
         trace!("Hash value now: {:?}", rv);
         Hash(rv)
+    }
+}
+
+impl Write for Hasher {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        // Using s directly causes segfault on qemu
+        let mut buffer: ArrayString<256> = ArrayString::new();
+        match buffer.try_push_str(s) {
+            Ok(()) => {
+                self.update(buffer.as_bytes());
+                Ok(())
+            }
+            _ => { Err(core::fmt::Error) }
+        }
     }
 }
 
