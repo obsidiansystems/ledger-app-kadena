@@ -23,10 +23,11 @@ extern "C" fn sample_main() {
     let mut menu = Menu::new(&[]);
 
     info!("Kadena app {}", env!("CARGO_PKG_VERSION"));
+    info!("State sizes\ncomm: {}\nstates: {}\n", core::mem::size_of::<io::Comm>(), core::mem::size_of::<ParsersState>());
 
     idle_menu(&mut menu);
     loop {
-        info!("Fetching next event.");
+        // info!("Fetching next event.");
         // Wait for either a specific button push to exit the app
         // or an APDU command
         match comm.next_event() {
@@ -127,6 +128,7 @@ enum Ins {
     GetPubkey,
     Sign,
     SignHash,
+    MakeTransferTx,
     GetVersionStr,
     Exit
 }
@@ -138,6 +140,7 @@ impl From<u8> for Ins {
             2 => Ins::GetPubkey,
             3 => Ins::Sign,
             4 => Ins::SignHash,
+            0x10 => Ins::MakeTransferTx,
             0xfe => Ins::GetVersionStr,
             0xff => Ins::Exit,
             _ => panic!(),
@@ -200,7 +203,7 @@ fn run_parser_apdu<P: InterpParser<A, Returning = ArrayVec<u8, 128>>, A>(
 
 #[inline(never)]
 fn handle_apdu(comm: &mut io::Comm, ins: Ins, parser: &mut ParsersState) -> Result<(), Reply> {
-    info!("entering handle_apdu with command {:?}", ins);
+    // info!("entering handle_apdu with command {:?}", ins);
     if comm.rx == 0 {
         return Err(io::StatusWords::NothingReceived.into());
     }
@@ -223,6 +226,9 @@ fn handle_apdu(comm: &mut io::Comm, ins: Ins, parser: &mut ParsersState) -> Resu
             } else {
                 run_parser_apdu::<_, SignHashParameters>(parser, get_sign_hash_state, &SIGN_HASH_IMPL, comm)?
             }
+        }
+        Ins::MakeTransferTx => {
+            run_parser_apdu::<_, MakeTransferTxParameters>(parser, get_make_transfer_tx_state, &MAKE_TRANSFER_TX_IMPL, comm)?
         }
         Ins::GetVersionStr => {
             comm.append(concat!("Kadena ", env!("CARGO_PKG_VERSION")).as_ref());
