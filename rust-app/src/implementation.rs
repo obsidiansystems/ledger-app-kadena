@@ -498,8 +498,9 @@ impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
 
 // ----------------------------------------------------------------------------------
 
+#[inline(never)]
 fn handle_first_prompt (
-    pkh: &PKH, cmd_buf: &mut ArrayString<TX_SIZE>
+    pkh: &PKH, hasher: &mut Hasher
         , txType: u8
         , recipient: &ArrayVec<u8, PARAM_RECIPIENT_SIZE>
         , _recipient_chain: &ArrayVec<u8, PARAM_RECIPIENT_CHAIN_SIZE>
@@ -508,16 +509,30 @@ fn handle_first_prompt (
 ) -> Option<()>
 {
     // TODO: clist amount in decimal
-    let mut pw = mk_prompt_write(cmd_buf);
+    // let mut buffer: ArrayString<100> = ArrayString::new();
+    // let mut pw = mk_prompt_write(&mut buffer);
+    // let whash = |hasher: &mut Hasher, buffer:&mut ArrayString<100>| {
+    //     info!("PW: {}", buffer.as_str());
+    //     info!("PW: {}", buffer.as_str());
+    // };
     // curly braces are escaped like '{{', '}}'
     // The JSON struct begins here, and ends in handle_second_prompt
-    write!(pw, "{{").ok()?;
+    write!(hasher, "{{").ok()?;
+    // let b = buffer.as_ref();
+    // hasher.update(b.as_bytes());
     match txType {
         0 => {
-            write!(pw, "\"payload\":{{\"exec\":{{\"data\":null,\"code\":\"(coin.transfer \\\"k:{}\\\" \\\"k:{}\\\" {})\"}}}}"
-                   , pkh, from_utf8(recipient).ok()?, from_utf8(amount).ok()?).ok()?;
-            write!(pw, ",\"signers\":[{{\"pubKey\":\"k:{}\",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[\"k:{}\",\"k:{}\",{}]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]"
-                   , pkh, pkh, from_utf8(recipient).ok()?, from_utf8(amount).ok()?).ok()?
+            write!(hasher, "\"payload\":{{\"exec\":{{\"data\":{{}},\"code\":\"").ok()?;
+            write!(hasher, "(coin.transfer \\\"k:{}\\\"", pkh).ok()?;
+            write!(hasher, " \\\"k:{}\\\"", from_utf8(recipient).ok()?).ok()?;
+            write!(hasher, "{})\"}}}}", from_utf8(amount).ok()?).ok()?;
+            write!(hasher, ",\"signers\":[{{\"pubKey\":").ok()?;
+            write!(hasher, "\"k:{}\"", pkh).ok()?;
+            write!(hasher, ",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[").ok()?;
+            write!(hasher, "\"k:{}\"", pkh).ok()?;
+            write!(hasher, "\"k:{}\"", from_utf8(recipient).ok()?).ok()?;
+            write!(hasher, "{}", from_utf8(amount).ok()?).ok()?;
+            write!(hasher, "]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]").ok()?;
         },
         1 => {
             
@@ -527,14 +542,14 @@ fn handle_first_prompt (
         }
         _ => {}
     }
-    write!(pw, ",\"networkId\":\"{}\""
+    write!(hasher, ",\"networkId\":\"{}\""
            , from_utf8(network).ok()?).ok()?;
+    // write_scroller("pw contents", |w| Ok(write!(w, "{}", buffer.as_ref())?))?;
     Some(())
-    // write_scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
 }
 
 fn handle_second_prompt (
-    pkh: &PKH, cmd_buf: &mut ArrayString<TX_SIZE>
+    pkh: &PKH, hasher: &mut Hasher
         , gasPrice: &ArrayVec<u8, PARAM_GAS_PRICE_SIZE>
         , gasLimit: &ArrayVec<u8, PARAM_GAS_LIMIT_SIZE>
         , creationTime: &ArrayVec<u8, PARAM_CREATION_TIME_SIZE>
@@ -543,42 +558,51 @@ fn handle_second_prompt (
         , ttl: &ArrayVec<u8, PARAM_TTL_SIZE>
 ) -> Option<()>
 {
-    let mut pw = mk_prompt_write(cmd_buf);
-    write!(pw, ",\"nonce\":{}", from_utf8(nonce).ok()?).ok()?;
-    write!(pw, ",\"meta\":{{\"sender\":\"k:{}\",\"creationTime\":{},\"ttl\":{},\"chainId\":\"{}\",\"gasPrice\":{},\"gasLimit\":{}}}"
-           , pkh, from_utf8(creationTime).ok()?, from_utf8(ttl).ok()?
-           , from_utf8(chainId).ok()?, from_utf8(gasPrice).ok()?, from_utf8(gasLimit).ok()?).ok()?;
+    {
+        
+        // let mut pw = mk_prompt_write(hasher);
+        // write!(pw, ",\"nonce\":{}", from_utf8(nonce).ok()?).ok()?;
+// ,\"ttl\":{},\"chainId\":\"{}\",\"gasPrice\":{},\"gasLimit\":{}}}
+        // write!(pw, ",\"meta\":{{\"sender\":\"k:{}\"", pkh).ok()?;
+        // write!(pw, ",\"creationTime\":{}", from_utf8(creationTime).ok()?).ok()?;
+        // write!(pw, ",\"meta\":{{\"sender\":\"k:{}\",\"creationTime\":{},\"ttl\":{},\"chainId\":\"{}\",\"gasPrice\":{},\"gasLimit\":{}}}"
+        //        , pkh, from_utf8(creationTime).ok()?, from_utf8(ttl).ok()?
+        //        , from_utf8(chainId).ok()?, from_utf8(gasPrice).ok()?, from_utf8(gasLimit).ok()?).ok()?;
+        // write!(pw, "}}").ok()?;
+    }
 
-    write_scroller("On Chain", |w| Ok(write!(w, "{}", from_utf8(chainId)?)?))?;
-    write_scroller("Using Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
+    // write_scroller("On Chain", |w| Ok(write!(w, "{}", from_utf8(chainId)?)?))?;
+    // write_scroller("Using Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
     // The JSON struct ends here
-    write!(pw, "}}").ok()?;
     Some(())
     // write_scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
 }
 
-const TX_SIZE: usize = 0;
-type CmdAndPath = (ArrayString<TX_SIZE>, ArrayVec<u32, 10>);
+type HasherAndPath = (Hasher, ArrayVec<u32, 10>);
+type HasherAndPath2 = (u8, ArrayVec<u32, 10>);
 
 pub type OptionByteVec<const N: usize> = Option<ArrayVec<u8, N>>;
 
 type SubDefT = SubInterp<DefaultInterp>;
 const SubDef: SubDefT = SubInterp(DefaultInterp);
 
-const PathRecipientAmountP
-  : MoveAction
-    <(SubDefT, (DefaultInterp, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
-     , fn((Option<ArrayVec<u32, 10_usize>>
+pub type PathRecipientAmountT = impl InterpParser<MakeTransferTxParameters1, Returning = HasherAndPath>;
+
+pub type MakeTransferTxParameters1RV = (Option<ArrayVec<u32, 10_usize>>
            , Option<(Option<u8>
            , Option<(OptionByteVec<PARAM_RECIPIENT_SIZE>
            , Option<(OptionByteVec<PARAM_RECIPIENT_CHAIN_SIZE>
            , Option<(OptionByteVec<PARAM_NETWORK_SIZE>
-           , OptionByteVec<PARAM_AMOUNT_SIZE>)>)>)>)>)
-          , &mut Option<CmdAndPath>) -> Option<()>
-     >
+           , OptionByteVec<PARAM_AMOUNT_SIZE>)>)>)>)>);
+
+const PathRecipientAmountP: PathRecipientAmountT
+  // : MoveAction
+  //   <(SubDefT, (DefaultInterp, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
+  // , fn(MakeTransferTxParameters1RV, &mut Option<HasherAndPath2>) -> Option<()>
+  //    >
   = MoveAction(
       ( SubDef, (DefaultInterp, (SubDef, (SubDef, (SubDef, SubDef)))))
-    , mkmvfn(|(path, optv1), destination| {
+    , mkmvfn(|(path, optv1): MakeTransferTxParameters1RV, destination:&mut Option<HasherAndPath>| {
         let key = get_pubkey(path.as_ref()?).ok()?;
 
         let pkh = get_pkh(key);
@@ -593,70 +617,128 @@ const PathRecipientAmountP
         //                                 , mkstr2(&recipient_pubkey)?
         //                                 , mkstr2(&amount)?
         // )?))?;
-        let mut cmd_buf = ArrayString::new();
-        handle_first_prompt(&pkh, &mut cmd_buf, txType?, &recipient?, &recipient_chain?, &amount?, &network?)?;
+        set_from_thunk(destination, || Some((Hasher::new(), path?)));
+        match destination {
+            Some((ref mut hasher, _)) => {
+                handle_first_prompt(&pkh, hasher, txType?, &recipient?, &recipient_chain?, &amount?, &network?)?;
+            }
+            _ => {}
+        }
         // with_public_keys(path.as_ref()?, |_, pkh: &PKH| { try_option(|| -> Option<()> {
-        //     handle_first_prompt(pkh, &mut cmd_buf, txType?, &recipient?, &recipient_chain?, &recipient_pubkey?, &amount?)?;
+        //     handle_first_prompt(pkh, &mut hasher, txType?, &recipient?, &recipient_chain?, &recipient_pubkey?, &amount?)?;
         //     Some(())
         // }())}).ok()?;
-        *destination = Some((cmd_buf, path?));
         Some(())
     }),
     );
 
-const NetworkMetaP
-  : MoveAction
-    <(SubDefT, (SubDefT, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
-     , fn((Option<ArrayVec<u8, PARAM_GAS_PRICE_SIZE>>
+pub type MakeTransferTxParameters2RV = (Option<ArrayVec<u8, PARAM_GAS_PRICE_SIZE>>
            , Option<(OptionByteVec<PARAM_GAS_LIMIT_SIZE>
            , Option<(OptionByteVec<PARAM_CREATION_TIME_SIZE>
            , Option<(OptionByteVec<PARAM_CHAIN_SIZE>
            , Option<(OptionByteVec<PARAM_NOONCE_SIZE>
-           , OptionByteVec<PARAM_TTL_SIZE>)>)>)>)>)
-           , &mut Option<CmdAndPath>
-           , CmdAndPath) -> Option<()>
-     >
+           , OptionByteVec<PARAM_TTL_SIZE>)>)>)>)>);
+
+pub type MetaNonceT = impl InterpParser<MakeTransferTxParameters2, Returning = HasherAndPath>;
+
+const MetaNonceP: MetaNonceT
+  // : MoveAction
+  //   <(SubDefT, (SubDefT, (SubDefT, (SubDefT, (SubDefT, SubDefT)))))
+  // , fn(MakeTransferTxParameters2RV, &mut Option<([u8; 32], ArrayVec<u32, 10>)>) -> Option<()>
+  //    >
 
   = MoveAction(
       ( SubDef, (SubDef, (SubDef, (SubDef, (SubDef, SubDef)))))
-   , mkmvfnp(|(network, optv1), destination, (mut cmd_buf, path)| {
-       let key = get_pubkey(&path).ok()?;
+   , mkmvfn(|(network, optv1): MakeTransferTxParameters2RV, destination| {
+       // let key = get_pubkey(&path).ok()?;
 
-       let pkh = get_pkh(key);
+       // let pkh = get_pkh(key);
        let (gasPrice, optv2) = optv1?;
        let (gasLimit, optv3) = optv2?;
        let (chainId, optv4) = optv3?;
        let (creationTime, ttl) = optv4?;
-       handle_second_prompt(&pkh, &mut cmd_buf, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+       // handle_second_prompt(&pkh, &mut hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
        // with_public_keys(path.as_ref(), |_, pkh: &PKH| { try_option(|| -> Option<()> {
-       //     handle_second_prompt(pkh, &mut cmd_buf, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+       //     handle_second_prompt(pkh, &mut hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
        //     Some(())
        // }())}).ok()?;
-       *destination = Some((cmd_buf, path));
+       //  let hash: [u8; 32] = hasher.finalize().0.into();
+       // *destination = Some((hash, path));
         Some(())
     }),
     );
 
 pub type MakeTransferTxImplT = impl InterpParser<MakeTransferTxParameters, Returning = ArrayVec<u8, 128_usize>>;
 
-pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MoveAction(
-    DynBind(PathRecipientAmountP, NetworkMetaP)
-    ,
-    mkmvfn(|(payload, path): CmdAndPath, destination: &mut _| {
-        final_accept_prompt(&[&"Sign Transaction Hash?"])?;
+pub struct MakeTx;
 
-        // let hash = [];
-        // By the time we get here, we've approved and just need to do the signature.
-        // let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?[..]).ok()?;
-        // let mut rv = ArrayVec::<u8, 128>::new();
+pub enum MakeTxSubState {
+    Init,
+    PathRecipientAmount(<PathRecipientAmountT as ParserCommon<MakeTransferTxParameters1>>::State),
+    MetaNonce(<MetaNonceT as ParserCommon<MakeTransferTxParameters2>>::State),
+}
 
-        info!("payload {}", payload.as_str());
-        let mut rv = ArrayVec::<u8, 128>::new();
-        rv.try_extend_from_slice(payload.as_bytes()).ok()?;
-        *destination = Some(rv);
-        Some(())
-    }),
-);
+impl ParserCommon<MakeTransferTxParameters> for MakeTx {
+    type State = (Option<HasherAndPath>, MakeTxSubState);
+    type Returning = ArrayVec<u8, 128_usize>;
+    fn init(&self) -> Self::State {
+        (None, MakeTxSubState::Init)
+    }
+}
+
+impl InterpParser<MakeTransferTxParameters> for MakeTx {
+    fn parse<'a, 'b>(&self, (ref mut hasherAndPath, ref mut state): &'b mut Self::State, chunk: &'a [u8], destination: &mut Option<Self::Returning>) -> ParseResult<'a> {
+        let mut cursor = chunk;
+        loop {
+            match state {
+                MakeTxSubState::Init => {
+                    init_with_default(destination);
+                    set_from_thunk(state, || MakeTxSubState::PathRecipientAmount(<PathRecipientAmountT as ParserCommon<MakeTransferTxParameters1>>::init(&PathRecipientAmountP)))
+                }
+                MakeTxSubState::PathRecipientAmount(ref mut sub) => {
+                    cursor = <PathRecipientAmountT as InterpParser<MakeTransferTxParameters1>>::parse(&PathRecipientAmountP, sub, cursor, hasherAndPath)?;
+                    panic!("done");
+                    set_from_thunk(state, || MakeTxSubState::MetaNonce(<MetaNonceT as ParserCommon<MakeTransferTxParameters2>>::init(&MetaNonceP)))
+                }
+                MakeTxSubState::MetaNonce(ref mut sub) => {
+                    cursor = <MetaNonceT as InterpParser<MakeTransferTxParameters2>>::parse(&MetaNonceP, sub, cursor, hasherAndPath)?;
+                    break Ok(cursor);
+                }
+            }
+        }
+    }
+}
+
+pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MakeTx;
+// pub static MAKE_TRANSFER_TX_IMPL: MakeTransferTxImplT = MoveAction(
+//     PathRecipientAmountP
+//     ,
+//     mkmvfn(|(hash, path):HasherAndPath2, destination: &mut _| {
+//         final_accept_prompt(&[&"Sign Transaction Hash?"])?;
+
+//         // let key = get_private_key(&path).ok()?;
+//         // let sig = eddsa_sign(&hash, &key)?;
+//         // let mut rv = ArrayVec::<u8, 128>::new();
+//         // rv.try_extend_from_slice(&sig.0[..]).ok()?;
+//         // *destination = Some(rv);
+//         Some(())
+//     }),
+// );
+
+// pub static MAKE_TRANSFER_TX_IMPL_OLD: MakeTransferTxImplT = MoveAction(
+//     DynBind(PathRecipientAmountP, MetaNonceP)
+//     ,
+//     mkmvfn(|(hash, path): ([u8; 32], ArrayVec<u32, 10>), destination: &mut _| {
+//         final_accept_prompt(&[&"Sign Transaction Hash?"])?;
+
+//         // let key = get_private_key(&path).ok()?;
+//         // let sig = eddsa_sign(&hash, &key)?;
+//         // let mut rv = ArrayVec::<u8, 128>::new();
+//         // rv.try_extend_from_slice(&sig.0[..]).ok()?;
+//         // *destination = Some(rv);
+//         Some(())
+//     }),
+// );
 
 // The global parser state enum; any parser above that'll be used as the implementation for an APDU
 // must have a field here.
@@ -667,6 +749,7 @@ pub enum ParsersState {
     GetAddressState(<GetAddressImplT as ParserCommon<Bip32Key>>::State),
     SignState(<SignImplT as ParserCommon<SignParameters>>::State),
     SignHashState(<SignHashImplT as ParserCommon<SignHashParameters>>::State),
+    MakeTransferTxState(<MakeTransferTxImplT as ParserCommon<MakeTransferTxParameters>>::State),
 }
 
 pub fn reset_parsers_state(state: &mut ParsersState) {
@@ -737,6 +820,27 @@ pub fn get_sign_hash_state(
     }
     match s {
         ParsersState::SignHashState(ref mut a) => a,
+        _ => {
+            panic!("")
+        }
+    }
+}
+
+#[inline(never)]
+pub fn get_make_transfer_tx_state(
+    s: &mut ParsersState,
+) -> &mut <MakeTransferTxImplT as ParserCommon<MakeTransferTxParameters>>::State {
+    match s {
+        ParsersState::MakeTransferTxState(_) => {}
+        _ => {
+            info!("Non-same state found; initializing state.");
+            *s = ParsersState::MakeTransferTxState(<MakeTransferTxImplT as ParserCommon<MakeTransferTxParameters>>::init(
+                &MAKE_TRANSFER_TX_IMPL,
+            ));
+        }
+    }
+    match s {
+        ParsersState::MakeTransferTxState(ref mut a) => a,
         _ => {
             panic!("")
         }
