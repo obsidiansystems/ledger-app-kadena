@@ -70,19 +70,22 @@ pub const PARAM_NOONCE_SIZE: usize = 64;
 pub const PARAM_TTL_SIZE: usize = 20;
 // pub const PARAM__SIZE: usize = 64;
 
-pub type MakeTransferTxParameters = (
+pub type MakeTransferTxParameters = (MakeTransferTxParameters1, MakeTransferTxParameters2);
+
+pub type MakeTransferTxParameters1 =
     (Bip32Key           // path
     , (Byte            // txType
     , (ByteDArray<PARAM_RECIPIENT_SIZE>
     , (ByteDArray<PARAM_RECIPIENT_CHAIN_SIZE>
     , (ByteDArray<PARAM_NETWORK_SIZE>
     , ByteDArray<PARAM_AMOUNT_SIZE>
-    ))))),
+    )))));
+
+pub type MakeTransferTxParameters2 =
     (ByteDArray<PARAM_GAS_PRICE_SIZE>
     , (ByteDArray<PARAM_GAS_LIMIT_SIZE>
     , (ByteDArray<PARAM_CREATION_TIME_SIZE>
     , (ByteDArray<PARAM_CHAIN_SIZE>
     , (ByteDArray<PARAM_NOONCE_SIZE>
     , ByteDArray<PARAM_TTL_SIZE>
-    ))))),
-);
+    )))));
