@@ -501,7 +501,7 @@ impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
 
 #[inline(never)]
 fn handle_first_prompt (
-    pkh: &PKH, hasher: &mut Hasher
+    pkh_str: &ArrayString<64>, hasher: &mut Hasher
         , txType: u8
         , recipient: &ArrayVec<u8, PARAM_RECIPIENT_SIZE>
         , _recipient_chain: &ArrayVec<u8, PARAM_RECIPIENT_CHAIN_SIZE>
@@ -521,23 +521,24 @@ fn handle_first_prompt (
     // };
     // curly braces are escaped like '{{', '}}'
     // The JSON struct begins here, and ends in handle_second_prompt
-    {
     write!(hasher, "{{").ok()?;
     // let b = buffer.as_ref();
     // hasher.update(b.as_bytes());
     match txType {
         0 => {
             write!(hasher, "\"payload\":{{\"exec\":{{\"data\":{{}},\"code\":\"").ok()?;
-            write!(hasher, "(coin.transfer \\\"k:{}\\\"", pkh).ok()?;
+            write!(hasher, "(coin.transfer \\\"k:{}\\\"", pkh_str).ok()?;
             write!(hasher, " \\\"k:{}\\\"", recipient_str).ok()?;
             write!(hasher, "{})\"}}}}", amount_str).ok()?;
             write!(hasher, ",\"signers\":[{{\"pubKey\":").ok()?;
-            write!(hasher, "\"{}\"", pkh).ok()?;
+            write!(hasher, "\"{}\"", pkh_str).ok()?;
             write!(hasher, ",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[").ok()?;
-            write!(hasher, "\"k:{}\",", pkh).ok()?;
+            write!(hasher, "\"k:{}\",", pkh_str).ok()?;
             write!(hasher, "\"k:{}\",", recipient_str).ok()?;
             write!(hasher, "{}", amount_str).ok()?;
             write!(hasher, "]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]").ok()?;
+            write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
+              , amount_str, pkh_str, recipient_str, network_str)?))?;
         },
         1 => {
             
@@ -548,13 +549,9 @@ fn handle_first_prompt (
         _ => {}
     }
     write!(hasher, ",\"networkId\":\"{}\"", network_str).ok()?;
-    }
-    {
         
     match txType {
         0 => {
-            // write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
-            //   , amount_str, pkh, recipient_str, network_str)?))?;
             // write_scroller("r", |w| Ok(write!(w, " to ")?))?;
         },
         1 => {
@@ -564,7 +561,6 @@ fn handle_first_prompt (
             
         }
         _ => {}
-    }
     }
     Some(())
 }
@@ -620,8 +616,12 @@ const PathRecipientAmountP: PathRecipientAmountT
     , mkmvfn(|(path, optv1): MakeTransferTxParameters1RV, destination:&mut Option<HasherAndPath>| {
         let mut privkey = get_private_key(&path?).ok()?;
 
-        let pubkey = get_pubkey_from_privkey(&mut privkey).ok()?;
-        let pkh = get_pkh(pubkey);
+        let mut pkh_str: ArrayString<64> = ArrayString::new();
+        {
+            let pubkey = get_pubkey_from_privkey(&mut privkey).ok()?;
+            let pkh = get_pkh(pubkey);
+            Ok(write!(mk_prompt_write(&mut pkh_str), "{}", pkh).ok()?)?;
+        }
         let (txType, optv2) = optv1?;
         let (recipient, optv3) = optv2?;
         let (recipient_chain, optv4) = optv3?;
@@ -630,19 +630,20 @@ const PathRecipientAmountP: PathRecipientAmountT
         match destination {
             Some((ref mut hasher, _)) => {
                 // Works
-                write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
-                  , from_utf8(amount.as_ref()?).ok()?, from_utf8(recipient.as_ref()?).ok()?, from_utf8(recipient.as_ref()?).ok()?, from_utf8(network.as_ref()?).ok()?)?))?;
+                // write_scroller("pkh", |w| Ok(write!(w, " {} ", pkh_str)?))?;
+                // write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
+                //   , from_utf8(amount.as_ref()?).ok()?, from_utf8(recipient.as_ref()?).ok()?, from_utf8(recipient.as_ref()?).ok()?, from_utf8(network.as_ref()?).ok()?)?))?;
 
                 // core-dump (w/o debug)
 
                 // write_scroller("pkh", |w| Ok(write!(w, " {} ", pkh)?))?;
                 // OR
                 // write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
-                //   , from_utf8(amount.as_ref()?).ok()?, pkh, from_utf8(recipient.as_ref()?).ok()?, from_utf8(network.as_ref()?).ok()?)?))?;
+                //   , from_utf8(amount.as_ref()?).ok()?, pkh_str, from_utf8(recipient.as_ref()?).ok()?, from_utf8(network.as_ref()?).ok()?)?))?;
 
 
                 // (w/o debug) gets stuck, (likely same hang issue as with debug)
-                // handle_first_prompt(&pkh, hasher, txType?, recipient.as_ref()?, recipient_chain.as_ref()?, amount.as_ref()?, network.as_ref()?)?;
+                handle_first_prompt(&pkh_str, hasher, txType?, recipient.as_ref()?, recipient_chain.as_ref()?, amount.as_ref()?, network.as_ref()?)?;
 
             }
             _ => {}
