@@ -522,33 +522,32 @@ fn handle_first_prompt (
     // curly braces are escaped like '{{', '}}'
     // The JSON struct begins here, and ends in handle_second_prompt
     write!(hasher, "{{").ok()?;
+    write!(hasher, "\"networkId\":\"{}\"", network_str).ok()?;
     // let b = buffer.as_ref();
     // hasher.update(b.as_bytes());
     match txType {
         0 => {
-            write!(hasher, "\"payload\":{{\"exec\":{{\"data\":{{}},\"code\":\"").ok()?;
+            write!(hasher, ",\"payload\":{{\"exec\":{{\"data\":{{}},\"code\":\"").ok()?;
             write!(hasher, "(coin.transfer \\\"k:{}\\\"", pkh_str).ok()?;
             write!(hasher, " \\\"k:{}\\\"", recipient_str).ok()?;
-            write!(hasher, "{})\"}}}}", amount_str).ok()?;
+            write!(hasher, " {})\"}}}}", amount_str).ok()?;
             write!(hasher, ",\"signers\":[{{\"pubKey\":").ok()?;
             write!(hasher, "\"{}\"", pkh_str).ok()?;
-            write!(hasher, ",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[").ok()?;
+            write!(hasher, ",\"clist\":[{{\"args\":[").ok()?;
             write!(hasher, "\"k:{}\",", pkh_str).ok()?;
             write!(hasher, "\"k:{}\",", recipient_str).ok()?;
-            write!(hasher, "{}", amount_str).ok()?;
-            write!(hasher, "]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]").ok()?;
+            write!(hasher, "{}]", amount_str).ok()?;
+            write!(hasher, ",\"name\":\"coin.TRANSFER\"}},{{\"args\":[],\"name\":\"coin.GAS\"}}]}}]").ok()?;
             write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
               , amount_str, pkh_str, recipient_str, network_str)?))?;
         },
         1 => {
-            
         },
         2 => {
             
         }
         _ => {}
     }
-    write!(hasher, ",\"networkId\":\"{}\"", network_str).ok()?;
         
     match txType {
         0 => {
@@ -566,7 +565,7 @@ fn handle_first_prompt (
 }
 
 fn handle_second_prompt (
-    pkh: &PKH, hasher: &mut Hasher
+    pkh_str: &ArrayString<64>, hasher: &mut Hasher
         , gasPrice: &ArrayVec<u8, PARAM_GAS_PRICE_SIZE>
         , gasLimit: &ArrayVec<u8, PARAM_GAS_LIMIT_SIZE>
         , creationTime: &ArrayVec<u8, PARAM_CREATION_TIME_SIZE>
@@ -575,15 +574,17 @@ fn handle_second_prompt (
         , ttl: &ArrayVec<u8, PARAM_TTL_SIZE>
 ) -> Option<()>
 {
-    write!(hasher, ",\"nonce\":\"{}\"", from_utf8(nonce).ok()?).ok()?;
-    write!(hasher, ",\"meta\":{{\"sender\":\"k:{}\"", pkh).ok()?;
-    write!(hasher, ",\"gasLimit\":{}", from_utf8(gasLimit).ok()?).ok()?;
-    write!(hasher, ",\"gasPrice\":{}", from_utf8(gasPrice).ok()?).ok()?;
-    write!(hasher, ",\"creationTime\":{}", from_utf8(creationTime).ok()?).ok()?;
+    write!(hasher, ",\"meta\":{{").ok()?;
+    write!(hasher, "\"creationTime\":{}", from_utf8(creationTime).ok()?).ok()?;
     write!(hasher, ",\"ttl\":{}", from_utf8(ttl).ok()?).ok()?;
-    write!(hasher, ",\"chainId\":{}", from_utf8(chainId).ok()?).ok()?;
+    write!(hasher, ",\"gasLimit\":{}", from_utf8(gasLimit).ok()?).ok()?;
+    write!(hasher, ",\"chainId\":\"{}\"", from_utf8(chainId).ok()?).ok()?;
+    write!(hasher, ",\"gasPrice\":{}", from_utf8(gasPrice).ok()?).ok()?;
+    write!(hasher, ",\"sender\":\"k:{}\"", pkh_str).ok()?;
+    write!(hasher, "}}").ok()?;
+    write!(hasher, ",\"nonce\":\"{}\"", from_utf8(nonce).ok()?).ok()?;
     // The JSON struct ends here
-    write!(hasher, "}}}}").ok()?;
+    write!(hasher, "}}").ok()?;
 
     write_scroller("Paying Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
     Some(())
@@ -670,16 +671,19 @@ const MetaNonceP: MetaNonceT
   = MoveAction(
       ( SubDef, (SubDef, (SubDef, (SubDef, (SubDef, SubDef)))))
    , mkmvfn(|(network, optv1): MakeTransferTxParameters2RV, destination: &mut Option<HasherAndPath>| {
-       let (gasPrice, optv2) = optv1?;
-       let (gasLimit, optv3) = optv2?;
-       let (chainId, optv4) = optv3?;
-       let (creationTime, ttl) = optv4?;
+        let (gasPrice, optv2) = optv1?;
+        let (gasLimit, optv3) = optv2?;
+        let (chainId, optv4) = optv3?;
+        let (creationTime, ttl) = optv4?;
         match destination {
             Some((ref mut hasher, ref mut privkey)) => {
-                let pubkey = get_pubkey_from_privkey(privkey).ok()?;
-                let pkh = get_pkh(pubkey);
-
-                handle_second_prompt(&pkh, hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
+                let mut pkh_str: ArrayString<64> = ArrayString::new();
+                {
+                    let pubkey = get_pubkey_from_privkey(privkey).ok()?;
+                    let pkh = get_pkh(pubkey);
+                    Ok(write!(mk_prompt_write(&mut pkh_str), "{}", pkh).ok()?)?;
+                }
+                handle_second_prompt(&pkh_str, hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
             }
             _ => {
                 panic!("destination should have been set")
@@ -730,8 +734,9 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
                     match hasherAndPath {
                         Some((ref mut hasher, privkey)) => {
                             let mut f = || -> Option<()> {
-                                final_accept_prompt(&[&"Sign Transaction?"])?;
                                 let hash = hasher.finalize();
+                                write_scroller("Transaction hash", |w| Ok(write!(w, "{}", hash)?))?;
+                                final_accept_prompt(&[&"Sign Transaction?"])?;
                                 let sig = eddsa_sign(&hash.0, &privkey)?;
                                 let mut rv = ArrayVec::<u8, 128>::new();
                                 // rv.try_extend_from_slice(&[1,2,3,4,5,6,7,8]).ok()?;
