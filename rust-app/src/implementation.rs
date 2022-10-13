@@ -18,6 +18,7 @@ use ledger_parser_combinators::json_interp::*;
 use ledger_parser_combinators::interp_parser::*;
 use core::convert::TryFrom;
 use core::str::from_utf8;
+use nanos_sdk::bindings::*;
 
 // A couple type ascription functions to help the compiler along.
 const fn mkfn<A,B>(q: fn(&A,&mut B)->Option<()>) -> fn(&A,&mut B)->Option<()> {
@@ -509,6 +510,9 @@ fn handle_first_prompt (
 ) -> Option<()>
 {
     // TODO: clist amount in decimal
+    let amount_str = from_utf8(amount).ok()?;
+    let recipient_str = from_utf8(recipient).ok()?;
+    let network_str = from_utf8(network).ok()?;
     // let mut buffer: ArrayString<100> = ArrayString::new();
     // let mut pw = mk_prompt_write(&mut buffer);
     // let whash = |hasher: &mut Hasher, buffer:&mut ArrayString<100>| {
@@ -517,6 +521,7 @@ fn handle_first_prompt (
     // };
     // curly braces are escaped like '{{', '}}'
     // The JSON struct begins here, and ends in handle_second_prompt
+    {
     write!(hasher, "{{").ok()?;
     // let b = buffer.as_ref();
     // hasher.update(b.as_bytes());
@@ -524,14 +529,14 @@ fn handle_first_prompt (
         0 => {
             write!(hasher, "\"payload\":{{\"exec\":{{\"data\":{{}},\"code\":\"").ok()?;
             write!(hasher, "(coin.transfer \\\"k:{}\\\"", pkh).ok()?;
-            write!(hasher, " \\\"k:{}\\\"", from_utf8(recipient).ok()?).ok()?;
-            write!(hasher, "{})\"}}}}", from_utf8(amount).ok()?).ok()?;
+            write!(hasher, " \\\"k:{}\\\"", recipient_str).ok()?;
+            write!(hasher, "{})\"}}}}", amount_str).ok()?;
             write!(hasher, ",\"signers\":[{{\"pubKey\":").ok()?;
             write!(hasher, "\"{}\"", pkh).ok()?;
             write!(hasher, ",\"clist\":[{{\"name\":\"coin.TRANSFER\",\"args\":[").ok()?;
             write!(hasher, "\"k:{}\",", pkh).ok()?;
-            write!(hasher, "\"k:{}\",", from_utf8(recipient).ok()?).ok()?;
-            write!(hasher, "{}", from_utf8(amount).ok()?).ok()?;
+            write!(hasher, "\"k:{}\",", recipient_str).ok()?;
+            write!(hasher, "{}", amount_str).ok()?;
             write!(hasher, "]}},{{\"name\":\"coin.GAS\",\"args\":[]}}]}}]").ok()?;
         },
         1 => {
@@ -542,9 +547,25 @@ fn handle_first_prompt (
         }
         _ => {}
     }
-    write!(hasher, ",\"networkId\":\"{}\""
-           , from_utf8(network).ok()?).ok()?;
-    // write_scroller("pw contents", |w| Ok(write!(w, "{}", buffer.as_ref())?))?;
+    write!(hasher, ",\"networkId\":\"{}\"", network_str).ok()?;
+    }
+    {
+        
+    match txType {
+        0 => {
+            // write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
+            //   , amount_str, pkh, recipient_str, network_str)?))?;
+            // write_scroller("r", |w| Ok(write!(w, " to ")?))?;
+        },
+        1 => {
+            
+        },
+        2 => {
+            
+        }
+        _ => {}
+    }
+    }
     Some(())
 }
 
@@ -565,16 +586,14 @@ fn handle_second_prompt (
     write!(hasher, ",\"creationTime\":{}", from_utf8(creationTime).ok()?).ok()?;
     write!(hasher, ",\"ttl\":{}", from_utf8(ttl).ok()?).ok()?;
     write!(hasher, ",\"chainId\":{}", from_utf8(chainId).ok()?).ok()?;
+    // The JSON struct ends here
     write!(hasher, "}}}}").ok()?;
 
-    // write_scroller("On Chain", |w| Ok(write!(w, "{}", from_utf8(chainId)?)?))?;
-    // write_scroller("Using Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
-    // The JSON struct ends here
+    write_scroller("Paying Gas", |w| Ok(write!(w, "at most {} at price {}", from_utf8(gasLimit)?, from_utf8(gasPrice)?)?))?;
     Some(())
-    // write_scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
 }
 
-type HasherAndPath = (Hasher, ArrayVec<u32, 10>);
+type HasherAndPath = (Hasher, cx_ecfp_256_private_key_s);
 type HasherAndPath2 = (u8, ArrayVec<u32, 10>);
 
 pub type OptionByteVec<const N: usize> = Option<ArrayVec<u8, N>>;
@@ -599,31 +618,35 @@ const PathRecipientAmountP: PathRecipientAmountT
   = MoveAction(
       ( SubDef, (DefaultInterp, (SubDef, (SubDef, (SubDef, SubDef)))))
     , mkmvfn(|(path, optv1): MakeTransferTxParameters1RV, destination:&mut Option<HasherAndPath>| {
-        let key = get_pubkey(path.as_ref()?).ok()?;
+        let mut privkey = get_private_key(&path?).ok()?;
 
-        let pkh = get_pkh(key);
+        let pubkey = get_pubkey_from_privkey(&mut privkey).ok()?;
+        let pkh = get_pkh(pubkey);
         let (txType, optv2) = optv1?;
         let (recipient, optv3) = optv2?;
         let (recipient_chain, optv4) = optv3?;
         let (network, amount) = optv4?;
-        // write_scroller("first", |w| Ok(write!(w, "txType: {}, recipient: {}, recipient_chain: {}, recipient_pubkey: {}, amount: {}"
-        //                                 , txType.ok_or(ScrollerError)?
-        //                                 , mkstr2(&recipient)?
-        //                                 , mkstr2(&recipient_chain)?
-        //                                 , mkstr2(&recipient_pubkey)?
-        //                                 , mkstr2(&amount)?
-        // )?))?;
-        set_from_thunk(destination, || Some((Hasher::new(), path?)));
+        set_from_thunk(destination, || Some((Hasher::new(), privkey)));
         match destination {
             Some((ref mut hasher, _)) => {
-                handle_first_prompt(&pkh, hasher, txType?, &recipient?, &recipient_chain?, &amount?, &network?)?;
+                // Works
+                write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
+                  , from_utf8(amount.as_ref()?).ok()?, from_utf8(recipient.as_ref()?).ok()?, from_utf8(recipient.as_ref()?).ok()?, from_utf8(network.as_ref()?).ok()?)?))?;
+
+                // core-dump (w/o debug)
+
+                // write_scroller("pkh", |w| Ok(write!(w, " {} ", pkh)?))?;
+                // OR
+                // write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
+                //   , from_utf8(amount.as_ref()?).ok()?, pkh, from_utf8(recipient.as_ref()?).ok()?, from_utf8(network.as_ref()?).ok()?)?))?;
+
+
+                // (w/o debug) gets stuck, (likely same hang issue as with debug)
+                // handle_first_prompt(&pkh, hasher, txType?, recipient.as_ref()?, recipient_chain.as_ref()?, amount.as_ref()?, network.as_ref()?)?;
+
             }
             _ => {}
         }
-        // with_public_keys(path.as_ref()?, |_, pkh: &PKH| { try_option(|| -> Option<()> {
-        //     handle_first_prompt(pkh, &mut hasher, txType?, &recipient?, &recipient_chain?, &recipient_pubkey?, &amount?)?;
-        //     Some(())
-        // }())}).ok()?;
         Some(())
     }),
     );
@@ -651,20 +674,16 @@ const MetaNonceP: MetaNonceT
        let (chainId, optv4) = optv3?;
        let (creationTime, ttl) = optv4?;
         match destination {
-            Some((ref mut hasher, path)) => {
-                let key = get_pubkey(&path).ok()?;
+            Some((ref mut hasher, ref mut privkey)) => {
+                let pubkey = get_pubkey_from_privkey(privkey).ok()?;
+                let pkh = get_pkh(pubkey);
 
-                let pkh = get_pkh(key);
                 handle_second_prompt(&pkh, hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
             }
-            _ => {}
+            _ => {
+                panic!("destination should have been set")
+            }
         }
-       // with_public_keys(path.as_ref(), |_, pkh: &PKH| { try_option(|| -> Option<()> {
-       //     handle_second_prompt(pkh, &mut hasher, &network?, &gasPrice?, &gasLimit?, &chainId?, &creationTime?, &ttl?)?;
-       //     Some(())
-       // }())}).ok()?;
-       //  let hash: [u8; 32] = hasher.finalize().0.into();
-       // *destination = Some((hash, path));
         Some(())
     }),
     );
@@ -677,6 +696,7 @@ pub enum MakeTxSubState {
     Init,
     PathRecipientAmount(<PathRecipientAmountT as ParserCommon<MakeTransferTxParameters1>>::State),
     MetaNonce(<MetaNonceT as ParserCommon<MakeTransferTxParameters2>>::State),
+    Done,
 }
 
 impl ParserCommon<MakeTransferTxParameters> for MakeTx {
@@ -693,6 +713,7 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
         loop {
             match state {
                 MakeTxSubState::Init => {
+                    info!("State sizes2 \nMakeTx: {}\n", core::mem::size_of::<MakeTxSubState>());
                     init_with_default(destination);
                     set_from_thunk(state, || MakeTxSubState::PathRecipientAmount(<PathRecipientAmountT as ParserCommon<MakeTransferTxParameters1>>::init(&PathRecipientAmountP)))
                 }
@@ -702,8 +723,27 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
                 }
                 MakeTxSubState::MetaNonce(ref mut sub) => {
                     cursor = <MetaNonceT as InterpParser<MakeTransferTxParameters2>>::parse(&MetaNonceP, sub, cursor, hasherAndPath)?;
-                    panic!("done");
-                    break Ok(cursor);
+                    set_from_thunk(state, || MakeTxSubState::Done);
+                }
+                MakeTxSubState::Done => {
+                    match hasherAndPath {
+                        Some((ref mut hasher, privkey)) => {
+                            let mut f = || -> Option<()> {
+                                final_accept_prompt(&[&"Sign Transaction?"])?;
+                                let hash = hasher.finalize();
+                                let sig = eddsa_sign(&hash.0, &privkey)?;
+                                let mut rv = ArrayVec::<u8, 128>::new();
+                                // rv.try_extend_from_slice(&[1,2,3,4,5,6,7,8]).ok()?;
+                                rv.try_extend_from_slice(&sig.0[..]).ok()?;
+                                *destination = Some(rv);
+                                Some(())
+                            };
+                            break f().map_or(Err((Some(OOB::Reject), cursor)), |_| Ok(cursor))
+                        }
+                        _ => {
+                            // panic!("should have been set")
+                        }
+                    }
                 }
             }
         }
