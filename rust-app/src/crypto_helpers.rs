@@ -161,7 +161,7 @@ impl Hasher {
 impl Write for Hasher {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         // Using s directly causes segfault on qemu
-        debug!("DEBSTR: {}", s);
+        // debug!("DEBSTR: {}", s);
         // debug!("DEBSTR2: {:?}", s);
         let mut buffer: ArrayString<100> = ArrayString::new();
         match buffer.try_push_str(s) {
