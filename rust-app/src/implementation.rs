@@ -538,10 +538,23 @@ fn handle_first_prompt (
             write!(hasher, "\"k:{}\",", recipient_str).ok()?;
             write!(hasher, "{}]", amount_str).ok()?;
             write!(hasher, ",\"name\":\"coin.TRANSFER\"}},{{\"args\":[],\"name\":\"coin.GAS\"}}]}}]").ok()?;
-            write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
-              , amount_str, pkh_str, recipient_str, network_str)?))?;
         },
         1 => {
+            write!(hasher, ",\"payload\":{{\"exec\":{{\"data\":{{").ok()?;
+            write!(hasher, "\"ks\":{{\"pred\":\"keys-all\",\"keys\":[").ok()?;
+            write!(hasher, "\"{}\"]}}}}", recipient_str).ok()?;
+            write!(hasher, ",\"code\":\"").ok()?;
+            write!(hasher, "(coin.transfer-create \\\"k:{}\\\"", pkh_str).ok()?;
+            write!(hasher, " \\\"k:{}\\\"", recipient_str).ok()?;
+            write!(hasher, " (read-keyset \\\"ks\\\")").ok()?;
+            write!(hasher, " {})\"}}}}", amount_str).ok()?;
+            write!(hasher, ",\"signers\":[{{\"pubKey\":").ok()?;
+            write!(hasher, "\"{}\"", pkh_str).ok()?;
+            write!(hasher, ",\"clist\":[{{\"args\":[").ok()?;
+            write!(hasher, "\"k:{}\",", pkh_str).ok()?;
+            write!(hasher, "\"k:{}\",", recipient_str).ok()?;
+            write!(hasher, "{}]", amount_str).ok()?;
+            write!(hasher, ",\"name\":\"coin.TRANSFER\"}},{{\"args\":[],\"name\":\"coin.GAS\"}}]}}]").ok()?;
         },
         2 => {
             
@@ -550,11 +563,9 @@ fn handle_first_prompt (
     }
         
     match txType {
-        0 => {
-            // write_scroller("r", |w| Ok(write!(w, " to ")?))?;
-        },
-        1 => {
-            
+        0 | 1 => {
+            write_scroller("Transfer", |w| Ok(write!(w, "{} from k:{} to {} on network {}"
+              , amount_str, pkh_str, recipient_str, network_str)?))?;
         },
         2 => {
             
