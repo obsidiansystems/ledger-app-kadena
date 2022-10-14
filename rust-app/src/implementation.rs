@@ -504,7 +504,7 @@ fn handle_first_prompt (
     pkh_str: &ArrayString<64>, hasher: &mut Hasher
         , txType: u8
         , recipient: &ArrayVec<u8, PARAM_RECIPIENT_SIZE>
-        , _recipient_chain: &ArrayVec<u8, PARAM_RECIPIENT_CHAIN_SIZE>
+        , recipient_chain: &ArrayVec<u8, PARAM_RECIPIENT_CHAIN_SIZE>
         , amount: &ArrayVec<u8, PARAM_AMOUNT_SIZE>
         , network: &ArrayVec<u8, PARAM_NETWORK_SIZE>
 ) -> Option<()>
@@ -512,6 +512,7 @@ fn handle_first_prompt (
     // TODO: clist amount in decimal
     let amount_str = from_utf8(amount).ok()?;
     let recipient_str = from_utf8(recipient).ok()?;
+    let recipient_chain_str = from_utf8(recipient_chain).ok()?;
     let network_str = from_utf8(network).ok()?;
     // let mut buffer: ArrayString<100> = ArrayString::new();
     // let mut pw = mk_prompt_write(&mut buffer);
@@ -557,7 +558,23 @@ fn handle_first_prompt (
             write!(hasher, ",\"name\":\"coin.TRANSFER\"}},{{\"args\":[],\"name\":\"coin.GAS\"}}]}}]").ok()?;
         },
         2 => {
-            
+            write!(hasher, ",\"payload\":{{\"exec\":{{\"data\":{{").ok()?;
+            write!(hasher, "\"ks\":{{\"pred\":\"keys-all\",\"keys\":[").ok()?;
+            write!(hasher, "\"{}\"]}}}}", recipient_str).ok()?;
+            write!(hasher, ",\"code\":\"").ok()?;
+            write!(hasher, "(coin.transfer-crosschain \\\"k:{}\\\"", pkh_str).ok()?;
+            write!(hasher, " \\\"k:{}\\\"", recipient_str).ok()?;
+            write!(hasher, " (read-keyset \\\"ks\\\")").ok()?;
+            write!(hasher, " \\\"{}\\\"", recipient_chain_str).ok()?;
+            write!(hasher, " {})\"}}}}", amount_str).ok()?;
+            write!(hasher, ",\"signers\":[{{\"pubKey\":").ok()?;
+            write!(hasher, "\"{}\"", pkh_str).ok()?;
+            write!(hasher, ",\"clist\":[{{\"args\":[").ok()?;
+            write!(hasher, "\"k:{}\",", pkh_str).ok()?;
+            write!(hasher, "\"k:{}\",", recipient_str).ok()?;
+            write!(hasher, "{},", amount_str).ok()?;
+            write!(hasher, "\"{}\"]", recipient_chain_str).ok()?;
+            write!(hasher, ",\"name\":\"coin.TRANSFER_XCHAIN\"}},{{\"args\":[],\"name\":\"coin.GAS\"}}]}}]").ok()?;
         }
         _ => {}
     }
@@ -568,7 +585,8 @@ fn handle_first_prompt (
               , amount_str, pkh_str, recipient_str, network_str)?))?;
         },
         2 => {
-            
+            write_scroller("Transfer", |w| Ok(write!(w, "Cross-chain {} from k:{} to {} to chain {} on network {}"
+              , amount_str, pkh_str, recipient_str, recipient_chain_str, network_str)?))?;
         }
         _ => {}
     }
