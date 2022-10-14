@@ -1331,20 +1331,21 @@ function getTransaction(path: string,
                         chainId: number,
                         gasPrice: string,
                         gasLimit: string,
+                        creationTime: number,
                         ttl: string,
+                        nonce: string,
+                        txn: string,
                         prompts: any[]) {
   return async () => {
     await sendCommandAndAccept(
       async (kda : Kda) => {
         let pubkey = (await kda.getPublicKey(path)).publicKey;
         await Axios.delete("http://0.0.0.0:5000/events");
-        let creationTime = 12345;
-
-        let rv = await kda.transferTx(path, recipient, amount, network, gasPrice, gasLimit, chainId, creationTime, ttl);
-        // expect(rv.signature.length).to.equal(128);
-        // let hash = blake2b(32).update(Buffer.from(txn, "utf-8")).digest();
-        // let pass = nacl.crypto_sign_verify_detached(Buffer.from(rv.signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
-        // expect(pass).to.equal(true);
+        let rv = await kda.transferTx(path, recipient, amount, network, gasPrice, gasLimit, chainId, creationTime, ttl, nonce);
+        expect(rv.signature.length).to.equal(128);
+        let hash = blake2b(32).update(Buffer.from(txn, "utf-8")).digest();
+        let pass = nacl.crypto_sign_verify_detached(Buffer.from(rv.signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
+        expect(pass).to.equal(true);
       }, prompts);
   }
 }
@@ -1353,13 +1354,22 @@ describe('Create Tx tests', function() {
   it("can build a transfer tx",
      getTransaction(
        "0/0",
-       'ffd8cd79deb956fa3c7d9be0f836f20ac84b140168a087a842be4760e40e2b1c',
+       '83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790',
        "1.23",
        "testnet04",
        0,
-       "1.0e-8",
-       "200",
-       "7200",
-       []
+       "1.0e-6",
+       "2300",
+       1665647810,
+       "600",
+       "2022-10-13 07:56:50.893257 UTC",
+       "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":{},\"code\":\"(coin.transfer \\\"k:ffd8cd79deb956fa3c7d9be0f836f20ac84b140168a087a842be4760e40e2b1c\\\" \\\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\\\" 1.23)\"}},\"signers\":[{\"pubKey\":\"ffd8cd79deb956fa3c7d9be0f836f20ac84b140168a087a842be4760e40e2b1c\",\"clist\":[{\"args\":[\"k:ffd8cd79deb956fa3c7d9be0f836f20ac84b140168a087a842be4760e40e2b1c\",\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\",1.23],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1665647810,\"ttl\":600,\"gasLimit\":2300,\"chainId\":\"0\",\"gasPrice\":1.0e-6,\"sender\":\"k:ffd8cd79deb956fa3c7d9be0f836f20ac84b140168a087a842be4760e40e2b1c\"},\"nonce\":\"2022-10-13 07:56:50.893257 UTC\"}",
+       [
+         { "header": "Transfer", "prompt": "1.23 from k:ffd8cd79deb956fa3c7d9be0f836f20ac84b140168a087a842be4760e40e2b1c to 83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790 on network testnet04" },
+         { "header": "Paying Gas", "prompt": "at most 2300 at price 1.0e-6" },
+         { "header": "Transaction hash", "prompt": "fUVEBE5j1xp3iK7QWTydXI94zUxcdgEZhNaLIzwcfrQ" },
+         {"text": "Sign Transaction?", "x": 19, "y": 11,},
+         {"text": "Confirm", "x": 43, "y": 11,}
+       ]
      ));
   })
