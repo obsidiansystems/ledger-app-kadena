@@ -759,22 +759,24 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
                 MakeTxSubState::Done => {
                     match hasherAndPath {
                         Some((ref mut hasher, ref mut privkey)) => {
-                            let mut f = || -> Option<()> {
-                                final_accept_prompt(&[&"Sign Transaction?"])?;
-                                *destination=Some(ArrayVec::new());
-                                {
-                                    let hash = hasher.finalize();
-                                    let sig = eddsa_sign(&hash.0, &privkey)?;
-                                    destination.as_mut()?.try_extend_from_slice(&sig.0[..]).ok()?;
-                                }
+                            final_accept_prompt(&[&"Sign Transaction?"]).ok_or((Some(OOB::Reject), cursor))?;
+                            *destination=Some(ArrayVec::new());
 
-                                {
-                                    let pubkey = get_pubkey_from_privkey(privkey).ok()?;
-                                    destination.as_mut()?.try_extend_from_slice(&pubkey.W[1..pubkey.W_len as usize]).ok()?;
-                                }
+                            let mut add_sig = || -> Option<()> {
+                                let hash = hasher.finalize();
+                                let sig = eddsa_sign(&hash.0, &privkey)?;
+                                destination.as_mut()?.try_extend_from_slice(&sig.0[..]).ok()?;
                                 Some(())
                             };
-                            break f().map_or(Err((Some(OOB::Reject), cursor)), |_| Ok(cursor))
+                            add_sig().ok_or((Some(OOB::Reject), cursor))?;
+
+                            let mut add_pubkey = || -> Option<()> {
+                                let pubkey = get_pubkey_from_privkey(privkey).ok()?;
+                                destination.as_mut()?.try_extend_from_slice(&pubkey.W[1..pubkey.W_len as usize]).ok()?;
+                                Some(())
+                            };
+                            add_pubkey().ok_or((Some(OOB::Reject), cursor))?;
+                            break Ok(cursor)
                         }
                         _ => {
                             // panic!("should have been set")
