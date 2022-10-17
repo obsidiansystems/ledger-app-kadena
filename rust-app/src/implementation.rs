@@ -33,9 +33,6 @@ const fn mkfnc<A,B,C>(q: fn(&A,&mut B,C)->Option<()>) -> fn(&A,&mut B,C)->Option
 const fn mkvfn<A>(q: fn(&A,&mut Option<()>)->Option<()>) -> fn(&A,&mut Option<()>)->Option<()> {
   q
 }
-const fn mkmvfnp<A,B,C,P>(q: fn(A,&mut B,P)->Option<C>) -> fn(A,&mut B,P)->Option<C> {
-    q
-}
 
 pub type GetAddressImplT = impl InterpParser<Bip32Key, Returning = ArrayVec<u8, 128_usize>>;
 pub const GET_ADDRESS_IMPL: GetAddressImplT =
