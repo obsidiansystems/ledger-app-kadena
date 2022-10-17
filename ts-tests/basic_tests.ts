@@ -1335,6 +1335,7 @@ function getTransaction(apiName: any,
         await Axios.delete("http://0.0.0.0:5000/events");
         let rv = await kda[apiName](params);
         expect(rv.signature.length).to.equal(128);
+        expect(rv.cmd).to.equal(txn);
         let hash = blake2b(32).update(Buffer.from(txn, "utf-8")).digest();
         let pass = nacl.crypto_sign_verify_detached(Buffer.from(rv.signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
         expect(pass).to.equal(true);
