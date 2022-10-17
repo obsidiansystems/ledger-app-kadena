@@ -761,16 +761,20 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
                 }
                 MakeTxSubState::Done => {
                     match hasherAndPath {
-                        Some((ref mut hasher, privkey)) => {
+                        Some((ref mut hasher, ref mut privkey)) => {
                             let mut f = || -> Option<()> {
-                                let hash = hasher.finalize();
-                                write_scroller("Transaction hash", |w| Ok(write!(w, "{}", hash)?))?;
                                 final_accept_prompt(&[&"Sign Transaction?"])?;
-                                let sig = eddsa_sign(&hash.0, &privkey)?;
-                                let mut rv = ArrayVec::<u8, 128>::new();
-                                // rv.try_extend_from_slice(&[1,2,3,4,5,6,7,8]).ok()?;
-                                rv.try_extend_from_slice(&sig.0[..]).ok()?;
-                                *destination = Some(rv);
+                                *destination=Some(ArrayVec::new());
+                                {
+                                    let hash = hasher.finalize();
+                                    let sig = eddsa_sign(&hash.0, &privkey)?;
+                                    destination.as_mut()?.try_extend_from_slice(&sig.0[..]).ok()?;
+                                }
+
+                                {
+                                    let pubkey = get_pubkey_from_privkey(privkey).ok()?;
+                                    destination.as_mut()?.try_extend_from_slice(&pubkey.W[1..pubkey.W_len as usize]).ok()?;
+                                }
                                 Some(())
                             };
                             break f().map_or(Err((Some(OOB::Reject), cursor)), |_| Ok(cursor))
