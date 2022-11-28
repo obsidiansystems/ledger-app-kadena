@@ -1,7 +1,7 @@
 rec {
   alamgu = import ./dep/alamgu {};
 
-  inherit (alamgu) lib pkgs crate2nix;
+  inherit (alamgu) lib pkgs crate2nix alamguLib;
 
   appName = "kadena";
 
@@ -10,35 +10,35 @@ rec {
     in import ./Cargo.nix {
       inherit rootFeatures release;
       pkgs = collection.ledgerPkgs;
-      buildRustCrateForPkgs = pkgs: let
-        fun = collection.buildRustCrateForPkgsWrapper
-          pkgs
-          ((collection.buildRustCrateForPkgsLedger pkgs).override {
-            defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-              ${appName} = attrs: let
-                sdk = lib.findFirst (p: lib.hasPrefix "rust_nanos_sdk" p.name) (builtins.throw "no sdk!") attrs.dependencies;
-              in {
-                preHook = collection.gccLibsPreHook;
-                extraRustcOpts = attrs.extraRustcOpts or [] ++ [
-                  "-C" "linker=${pkgs.stdenv.cc.targetPrefix}clang"
-                  "-C" "link-arg=-T${sdk.lib}/lib/nanos_sdk.out/link.ld"
-                ] ++ (if (device == "nanos") then
-                  [ "-C" "link-arg=-T${sdk.lib}/lib/nanos_sdk.out/nanos_layout.ld" ]
-                else if (device == "nanosplus") then
-                  [ "-C" "link-arg=-T${sdk.lib}/lib/nanos_sdk.out/nanosplus_layout.ld" ]
-                else if (device == "nanox") then
-                  [ "-C" "link-arg=-T${sdk.lib}/lib/nanos_sdk.out/nanox_layout.ld" ]
-                else throw ("Unknown target device: `${device}'"));
-              };
+      buildRustCrateForPkgs = alamguLib.combineWrappers [
+        # The callPackage of `buildRustPackage` overridden with various
+        # modified arguemnts.
+        (pkgs: (collection.buildRustCrateForPkgsLedger pkgs).override {
+          defaultCrateOverrides = pkgs.defaultCrateOverrides // {
+            ${appName} = attrs: let
+              sdk = lib.findFirst (p: lib.hasPrefix "rust_nanos_sdk" p.name) (builtins.throw "no sdk!") attrs.dependencies;
+            in {
+              preHook = collection.gccLibsPreHook;
+              extraRustcOpts = attrs.extraRustcOpts or [] ++ [
+                "-C" "linker=${sdk.lib}/lib/nanos_sdk.out/link_wrap.sh"
+                "-C" "link-arg=-T${sdk.lib}/lib/nanos_sdk.out/link.ld"
+                "-C" "link-arg=-T${sdk.lib}/lib/nanos_sdk.out/${device}_layout.ld"
+              ];
             };
-          });
-      in
-        args: fun (args // lib.optionalAttrs pkgs.stdenv.hostPlatform.isAarch32 {
+          };
+        })
+
+        # Default Alamgu wrapper
+        alamguLib.extraArgsForAllCrates
+
+        # Another wrapper specific to this app, but applying to all packages
+        (pkgs: args: args // lib.optionalAttrs (alamguLib.platformIsBolos pkgs.stdenv.hostPlatform) {
           dependencies = map (d: d // { stdlib = true; }) [
             collection.ledgerCore
             collection.ledgerCompilerBuiltins
           ] ++ args.dependencies;
-        });
+        })
+      ];
   };
 
   makeTarSrc = { appExe, device }: pkgs.runCommandCC "make-tar-src-${device}" {
@@ -76,7 +76,7 @@ rec {
     exec ${pkgs.nodejs-14_x}/bin/npm --offline test -- "$@"
   '';
 
-  apiPort = 5000;
+  apiPort = 5005;
 
   runTests = { appExe, device, variant ? "", speculosCmd }: pkgs.runCommandNoCC "run-tests-${device}${variant}" {
     nativeBuildInputs = [
@@ -85,7 +85,7 @@ rec {
   } ''
     mkdir $out
     (
-    ${speculosCmd} ${appExe} --display headless &
+    ${toString speculosCmd} ${appExe} --display headless &
     SPECULOS=$!
 
     until wget -O/dev/null -o/dev/null http://localhost:${toString apiPort}; do sleep 0.1; done;
@@ -120,11 +120,16 @@ rec {
       ${alamgu.ledgerctl}/bin/ledgerctl install -f ${tarSrc}/${appName}/app.json
     '';
 
-    speculosCmd = {
-      nanos = "speculos -m nanos";
-      nanosplus = "speculos  -m nanosp -k 1.0.3";
-      nanox = "speculos -m nanox";
+    speculosDeviceFlags = {
+      nanos = [ "-m" "nanos" ];
+      nanosplus = [ "-m" "nanosp" "-k" "1.0.3" ];
+      nanox = [ "-m" "nanox" ];
     }.${device} or (throw "Unknown target device: `${device}'");
+
+    speculosCmd = [
+      "speculos"
+      "--api-port" (toString apiPort)
+    ] ++ speculosDeviceFlags;
 
     test = runTests { inherit appExe speculosCmd device; };
     test-with-loging = runTests {
