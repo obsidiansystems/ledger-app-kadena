@@ -172,10 +172,10 @@ rec {
       };
       "cc" = rec {
         crateName = "cc";
-        version = "1.0.73";
+        version = "1.0.77";
         edition = "2018";
         crateBin = [];
-        sha256 = "04ccylrjq94jssh8f7d7hxv64gs9f1m1jrsxb7wqgfxk4xljmzrg";
+        sha256 = "1r7bv6sxwmpw9xaibz4fdfs2w8xfdabki1yi35dr0zcg6c2kbxz9";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -356,8 +356,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/alamgu/ledger-crypto-helpers";
-          rev = "22a454e9b81615053928fb6b21d59b45c2a1e498";
-          sha256 = "0fagq3kqmarkr7pnbd15d56nm3xpsgfrfqkywxladihym87dzdxm";
+          rev = "4c4881b7db90349ed9829f2c93b1faaa0a68adc5";
+          sha256 = "0v3wxakmrjgi0y4nrr1iqb1x1kac7nrkf31975jaxamgdy7ng5i0";
         };
         dependencies = [
           {
@@ -513,9 +513,9 @@ rec {
       };
       "libc" = rec {
         crateName = "libc";
-        version = "0.2.137";
+        version = "0.2.138";
         edition = "2015";
-        sha256 = "12dz2lk4a7lm03k079n2rkm1l6cpdhvy6nrngbfprzrv19icqzzw";
+        sha256 = "1y6f8qalriadl0f9sk43ljwpm64bpkx2lsm4nzx5sb2nkhr7wvfv";
         authors = [
           "The Rust Project Developers"
         ];
@@ -551,8 +551,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/alamgu/ledger-nanos-sdk.git";
-          rev = "c6e7314029593a5caa40b9df5a78bb54d308d161";
-          sha256 = "1iami49s435anrycwx2r20vl11xmxarl9l32gn9sic4hg5v45saz";
+          rev = "708757bf37a006f9f54c738caeafc5edee3964fa";
+          sha256 = "1zxx83q4qq7q0m4i2abrbd57xk9k91zrdvq7z29nhsp755id38ky";
         };
         authors = [
           "yhql"
@@ -735,9 +735,9 @@ rec {
       };
       "syn" = rec {
         crateName = "syn";
-        version = "1.0.103";
+        version = "1.0.105";
         edition = "2018";
-        sha256 = "0pa4b6g938drphblgdhmjnzclp7gcbf4zdgkmfaxlfhk54i08r58";
+        sha256 = "0279ivl07g0y5fs5bwmglhkdvi99ypcm36yb774f8bbh8lyv9fb0";
         authors = [
           "David Tolnay <dtolnay@gmail.com>"
         ];
@@ -832,9 +832,9 @@ rec {
       };
       "typenum" = rec {
         crateName = "typenum";
-        version = "1.15.0";
+        version = "1.16.0";
         edition = "2018";
-        sha256 = "11yrvz1vd43gqv738yw1v75rzngjbs7iwcgzjy3cq5ywkv2imy6w";
+        sha256 = "1fhb9iaqyjn4dzn2vl86kxjhp4xpw5gynczlnqzf4x6rjgpn2ya9";
         build = "build/main.rs";
         authors = [
           "Paho Lurie-Gregg <paho@paholg.com>"
@@ -933,20 +933,7 @@ rec {
     */
     os = pkgs.rust.lib.toTargetOs platform;
     arch = pkgs.rust.lib.toTargetArch platform;
-    family =
-      if platform ? rustc.platform.target-family
-      then
-        (
-          /* Since https://github.com/rust-lang/rust/pull/84072
-             `target-family` is a list instead of single value.
-           */
-          let
-            f = platform.rustc.platform.target-family;
-          in
-          if builtins.isList f then f else [ f ]
-        )
-      else lib.optional platform.isUnix "unix"
-        ++ lib.optional platform.isWindows "windows";
+    family = pkgs.rust.lib.toTargetFamily platform;
     env = "gnu";
     endian =
       if platform.parsed.cpu.significantByte.name == "littleEndian"
