@@ -19,8 +19,12 @@ let ignoredScreens = [ "W e l c o m e", "Cancel", "Working...", "Quit", "Kadena 
   /* The next ones are specifically for S+ in which OCR is broken */
   , "Blind igning", "Enable Blind igning", "Disable Blind igning", "Blind igningQuit", "QuitQuit" ];
 
+const API_PORT: number = 5005;
+
+const BASE_URL: string = `http://127.0.0.1:${API_PORT}`;
+
 let setAcceptAutomationRules = async function() {
-    await Axios.post("http://0.0.0.0:5000/automation", {
+    await Axios.post(BASE_URL + "/automation", {
       version: 1,
       rules: [
         ... ignoredScreens.map(txt => { return { "text": txt, "actions": [] } }),
@@ -33,14 +37,14 @@ let setAcceptAutomationRules = async function() {
     });
 }
 
-let processPrompts = function(prompts: any[]) {
-  let i = prompts.filter((a : any) => !ignoredScreens.includes(a["text"])).values();
-  let {done, value} = i.next();
+let processPrompts = function(prompts: [any]) {
+  let i = prompts.filter((a : any) => !ignoredScreens.includes(a["text"])); // .values();
   let header = "";
   let prompt = "";
   let rv = [];
   let working_screen = "Working...";
-  while(!done) {
+  for (var ii in i) {
+    let value = i[ii];
     if(value["y"] == 1) {
       if(value["text"] != header) {
         if(header || prompt) rv.push({ header, prompt });
@@ -63,8 +67,8 @@ let processPrompts = function(prompts: any[]) {
       header = "";
       prompt = "";
     }
-    ({done, value} = i.next());
   }
+  if (header || prompt) rv.push({ header, prompt });
   return rv;
 }
 
@@ -96,22 +100,22 @@ let fixRefPromptsForSPlus = function(prompts: any[]) {
 
 let sendCommandAndAccept = async function(command : any, prompts : any) {
     await setAcceptAutomationRules();
-    await Axios.delete("http://0.0.0.0:5000/events");
+    await Axios.delete(BASE_URL + "/events");
 
-    let transport = await Transport.open("http://0.0.0.0:5000/apdu");
+    let transport = await Transport.open(BASE_URL + "/apdu");
     let kda = new Kda(transport);
-    
+
     //await new Promise(resolve => setTimeout(resolve, 100));
 
     let err = null;
-    
+
     try { await command(kda); } catch(e) {
       err = e;
     }
-    
+
     //await new Promise(resolve => setTimeout(resolve, 100));
 
-    let actual_prompts = processPrompts((await Axios.get("http://0.0.0.0:5000/events")).data["events"] as [any]);
+    let actual_prompts = processPrompts((await Axios.get(BASE_URL + "/events")).data["events"] as [any]);
     try {
       expect(actual_prompts).to.deep.equal(prompts);
     } catch(e) {
@@ -128,9 +132,9 @@ let sendCommandAndAccept = async function(command : any, prompts : any) {
 
 let sendCommandExpectFail = async function(command : any) {
   await setAcceptAutomationRules();
-  await Axios.delete("http://0.0.0.0:5000/events");
+  await Axios.delete(BASE_URL + "/events");
 
-  let transport = await Transport.open("http://0.0.0.0:5000/apdu");
+  let transport = await Transport.open("http://127.0.0.1:5000/apdu");
   let kda = new Kda(transport);
   try { await command(kda); } catch(e) {
     return;
@@ -141,16 +145,9 @@ let sendCommandExpectFail = async function(command : any) {
 instantiate(n => { nacl=n; });
 describe('basic tests', async function() {
 
-  before( async function() {
-    while(!nacl) await new Promise(r => setTimeout(r, 100));
-    let transport = await Transport.open("http://0.0.0.0:5000/apdu");
-    let version_string = (await transport.send(0,0xfe,0,0,Buffer.alloc(0))).slice(0,-2).toString();
-    ignoredScreens.push(version_string);
-  })
-
   afterEach( async function() {
-    await Axios.post("http://0.0.0.0:5000/automation", {version: 1, rules: []});
-    await Axios.delete("http://0.0.0.0:5000/events");
+    await Axios.post(BASE_URL + "/automation", {version: 1, rules: []});
+    await Axios.delete(BASE_URL + "/events");
   });
 
   it('provides a public key', async () => {
@@ -172,7 +169,7 @@ describe('basic tests', async function() {
       }
     ]);
   });
-  
+
   it('provides a public key', async () => {
   await sendCommandAndAccept(async (kda : Kda) => {
       console.log("Started pubkey get");
@@ -193,40 +190,6 @@ describe('basic tests', async function() {
     ]);
   });
 
-  /*
-  it.skip('runs a test', async () => { 
-    
-    await setAcceptAutomationRules();
-    await Axios.delete("http://0.0.0.0:5000/events");
-
-    let transport = await Transport.open("http://0.0.0.0:5000/apdu");
-    let kda = new Kda(transport);
-    
-    let rv = await kda.getPublicKey("0/0");
-   
-    await Axios.post("http://0.0.0.0:5000/automation", {version: 1, rules: []});
-
-    expect(((await Axios.get("http://0.0.0.0:5000/events")).data["events"] as [any]).filter((a : any) => a["text"] != "W e l c o m e")).to.deep.equal([
-        {
-          "text": "Provide Public Key",
-          "x": 16,
-          "y": 11
-        },
-        {
-          "text": "pkh-929B536E11497F4EF573A22680528E1785AEA757D9D3C29A5D4CDCBA9E2BF",
-          "x": -50,
-          "y": 11
-        },
-        {
-          "text": "Confirm",
-          "x": 43,
-          "y": 11
-        }
-    ]);
-    expect(rv.publicKey).to.equal("04e96341109fdba54691303553ee95b371d9745410f1090055fb7c0aa9e564445483f78cb81526e27ab7869fcd996eb8bd39add229b41f9e30bccccdc00a9d6c4c");
-    await Axios.delete("http://0.0.0.0:5000/events");
-  });
- */
 });
 
 
@@ -235,7 +198,7 @@ function testTransaction(path: string, txn: string, prompts: any[]) {
        await sendCommandAndAccept(
          async (kda : Kda) => {
            let pubkey = (await kda.getPublicKey(path)).publicKey;
-           await Axios.delete("http://0.0.0.0:5000/events");
+           await Axios.delete(BASE_URL + "/events");
 
            let rv = await kda.signTransaction(path, Buffer.from(txn, "utf-8").toString("hex"));
            expect(rv.signature.length).to.equal(128);
@@ -990,7 +953,7 @@ function testSignHash(path: string, hash: string, prompts: any[]) {
          async (kda : Kda) => {
            let pubkey = (await kda.getPublicKey(path)).publicKey;
            await toggleHashSettings();
-           await Axios.delete("http://0.0.0.0:5000/events");
+           await Axios.delete(BASE_URL + "/events");
            let rv = await kda.signHash(path, hash);
            expect(rv.signature.length).to.equal(128);
            const rawHash = hash.length == 64 ? Buffer.from(hash, "hex") : Buffer.from(hash, "base64");
@@ -1018,18 +981,18 @@ function testSignHashFail2(path: string, hash: string) {
         // Enable and then disable
         await toggleHashSettings();
         await toggleHashSettings();
-        await Axios.delete("http://0.0.0.0:5000/events");
+        await Axios.delete(BASE_URL + "/events");
         await kda.signHash(path, hash);
       });
   }
 }
 
 let toggleHashSettings = async function() {
-  await Axios.post("http://0.0.0.0:5000/button/right", {"action":"press-and-release"});
-  await Axios.post("http://0.0.0.0:5000/button/both", {"action":"press-and-release"});
-  await Axios.post("http://0.0.0.0:5000/button/both", {"action":"press-and-release"});
-  await Axios.post("http://0.0.0.0:5000/button/right", {"action":"press-and-release"});
-  await Axios.post("http://0.0.0.0:5000/button/both", {"action":"press-and-release"});
+  await Axios.post(BASE_URL + "/button/right", {"action":"press-and-release"});
+  await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
+  await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
+  await Axios.post(BASE_URL + "/button/right", {"action":"press-and-release"});
+  await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
 }
 
 describe('Hash Signing Tests', function() {
@@ -1359,7 +1322,7 @@ describe("Capability Signing tests", function() {
     await sendCommandAndAccept(
       async (kda : Kda) => {
         let pubkey = (await kda.getPublicKey(path)).publicKey;
-        await Axios.delete("http://0.0.0.0:5000/events");
+        await Axios.delete(BASE_URL + "/events");
 
         let txn = await fs.readFileSync(file);
         let rv = await kda.signTransaction(path, txn);
@@ -1370,3 +1333,186 @@ describe("Capability Signing tests", function() {
       }, prompts);
   });
 })
+
+function checkSignTransferTxAPIs(apiName: any,
+                        params: any,
+                        txn: string,
+                        prompts: any[]) {
+  return async () => {
+    await sendCommandAndAccept(
+      async (kda : Kda) => {
+        let pubkey = (await kda.getPublicKey(params.path)).publicKey;
+        await Axios.delete(BASE_URL + "/events");
+        try {
+          let rv = await kda[apiName](params);
+          let signature = rv.pact_command.sigs[0].sig;
+          expect(signature.length).to.equal(128);
+          expect(rv.pact_command.cmd).to.equal(txn);
+          expect(rv.pubkey).to.equal(pubkey);
+          let hash = blake2b(32).update(Buffer.from(txn, "utf-8")).digest();
+          let pass = nacl.crypto_sign_verify_detached(Buffer.from(signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
+          expect(pass).to.equal(true);
+        } catch (e) {
+          console.log("Error:", apiName, e);
+          throw e;
+        }
+      }, prompts);
+  }
+}
+
+describe('Create Tx tests', function() {
+  it("can build a transfer tx",
+     checkSignTransferTxAPIs(
+       "signTransferTx",
+       {
+         path: "44'/626'/0'/0/0",
+         recipient: '83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790',
+         amount: "1.23",
+         network: "testnet04",
+         chainId: 0,
+         gasPrice: "1.0e-6",
+         gasLimit: "2300",
+         creationTime: 1665647810,
+         ttl: "600",
+         nonce: "2022-10-13 07:56:50.893257 UTC"
+       },
+       "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":{},\"code\":\"(coin.transfer \\\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\\\" \\\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\\\" 1.23)\"}},\"signers\":[{\"pubKey\":\"9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"clist\":[{\"args\":[\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\",1.23],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1665647810,\"ttl\":600,\"gasLimit\":2300,\"chainId\":\"0\",\"gasPrice\":1.0e-6,\"sender\":\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\"},\"nonce\":\"2022-10-13 07:56:50.893257 UTC\"}",
+       [
+         { "header": "Token:", "prompt": "KDA" },
+         { "header": "Transfer", "prompt": "1.23 from k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995 to k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790 on network testnet04" },
+         { "header": "Paying Gas", "prompt": "at most 2300 at price 1.0e-6" },
+         {"text": "Sign Transaction?", "x": 19, "y": 11,},
+         {"text": "Confirm", "x": 43, "y": 11,}
+       ]
+     ));
+  it("can build a transfer-create tx",
+     checkSignTransferTxAPIs(
+       "signTransferCreateTx",
+       {
+         path: "44'/626'/0'/0/0",
+         recipient: '83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790',
+         amount: "23.67",
+         network: "testnet04",
+         chainId: 1,
+         gasPrice: "1.0e-6",
+         gasLimit: "2300",
+         creationTime: 1665722463,
+         ttl: "600",
+         nonce: "2022-10-14 04:41:03.193557 UTC"
+       },
+       "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":{\"ks\":{\"pred\":\"keys-all\",\"keys\":[\"83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\"]}},\"code\":\"(coin.transfer-create \\\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\\\" \\\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\\\" (read-keyset \\\"ks\\\") 23.67)\"}},\"signers\":[{\"pubKey\":\"9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"clist\":[{\"args\":[\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\",23.67],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1665722463,\"ttl\":600,\"gasLimit\":2300,\"chainId\":\"1\",\"gasPrice\":1.0e-6,\"sender\":\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\"},\"nonce\":\"2022-10-14 04:41:03.193557 UTC\"}",
+       [
+         { "header": "Token:", "prompt": "KDA" },
+         { "header": "Transfer", "prompt": "23.67 from k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995 to k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790 on network testnet04" },
+         { "header": "Paying Gas", "prompt": "at most 2300 at price 1.0e-6" },
+         {"text": "Sign Transaction?", "x": 19, "y": 11,},
+         {"text": "Confirm", "x": 43, "y": 11,}
+       ]
+     ));
+  it("can build a cross-chain transfer tx",
+     checkSignTransferTxAPIs(
+       "signTransferCrossChainTx",
+       {
+         path: "44'/626'/0'/0/0",
+         recipient: '83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790',
+         recipient_chainId: 2,
+         amount: "23.67",
+         network: "testnet04",
+         chainId: 1,
+         gasPrice: "1.0e-6",
+         gasLimit: "2300",
+         creationTime: 1665722463,
+         ttl: "600",
+         nonce: "2022-10-14 04:41:03.193557 UTC"
+       },
+       "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":{\"ks\":{\"pred\":\"keys-all\",\"keys\":[\"83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\"]}},\"code\":\"(coin.transfer-crosschain \\\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\\\" \\\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\\\" (read-keyset \\\"ks\\\") \\\"2\\\" 23.67)\"}},\"signers\":[{\"pubKey\":\"9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"clist\":[{\"args\":[\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\",23.67,\"2\"],\"name\":\"coin.TRANSFER_XCHAIN\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1665722463,\"ttl\":600,\"gasLimit\":2300,\"chainId\":\"1\",\"gasPrice\":1.0e-6,\"sender\":\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\"},\"nonce\":\"2022-10-14 04:41:03.193557 UTC\"}",
+       [
+         { "header": "Token:", "prompt": "KDA" },
+         { "header": "Transfer", "prompt": "Cross-chain 23.67 from k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995 to k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790 to chain 2 on network testnet04" },
+         { "header": "Paying Gas", "prompt": "at most 2300 at price 1.0e-6" },
+         {"text": "Sign Transaction?", "x": 19, "y": 11,},
+         {"text": "Confirm", "x": 43, "y": 11,}
+       ]
+     ));
+
+  it("can build a custom token transfer tx",
+     checkSignTransferTxAPIs(
+       "signTransferTx",
+       {
+         path: "44'/626'/0'/0/0",
+         recipient: '83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790',
+         amount: "1.23",
+         namespace: "free",
+         module: "mytoken-123",
+         network: "testnet04",
+         chainId: 0,
+         gasPrice: "1.0e-6",
+         gasLimit: "2300",
+         creationTime: 1665647810,
+         ttl: "600",
+         nonce: "2022-10-13 07:56:50.893257 UTC"
+       },
+       "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":{},\"code\":\"(free.mytoken-123.transfer \\\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\\\" \\\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\\\" 1.23)\"}},\"signers\":[{\"pubKey\":\"9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"clist\":[{\"args\":[\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\",1.23],\"name\":\"free.mytoken-123.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1665647810,\"ttl\":600,\"gasLimit\":2300,\"chainId\":\"0\",\"gasPrice\":1.0e-6,\"sender\":\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\"},\"nonce\":\"2022-10-13 07:56:50.893257 UTC\"}",
+       [
+         { "header": "Token:", "prompt": "free.mytoken-123" },
+         { "header": "Transfer", "prompt": "1.23 from k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995 to k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790 on network testnet04" },
+         { "header": "Paying Gas", "prompt": "at most 2300 at price 1.0e-6" },
+         {"text": "Sign Transaction?", "x": 19, "y": 11,},
+         {"text": "Confirm", "x": 43, "y": 11,}
+       ]
+     ));
+
+  it("can build a custom token transfer-create tx",
+     checkSignTransferTxAPIs(
+       "signTransferCreateTx",
+       {
+         path: "44'/626'/0'/0/0",
+         recipient: '83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790',
+         amount: "23.67",
+         namespace: "free",
+         module: "mytoken-123",
+         network: "testnet04",
+         chainId: 1,
+         gasPrice: "1.0e-6",
+         gasLimit: "2300",
+         creationTime: 1665722463,
+         ttl: "600",
+         nonce: "2022-10-14 04:41:03.193557 UTC"
+       },
+       "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":{\"ks\":{\"pred\":\"keys-all\",\"keys\":[\"83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\"]}},\"code\":\"(free.mytoken-123.transfer-create \\\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\\\" \\\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\\\" (read-keyset \\\"ks\\\") 23.67)\"}},\"signers\":[{\"pubKey\":\"9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"clist\":[{\"args\":[\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\",23.67],\"name\":\"free.mytoken-123.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1665722463,\"ttl\":600,\"gasLimit\":2300,\"chainId\":\"1\",\"gasPrice\":1.0e-6,\"sender\":\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\"},\"nonce\":\"2022-10-14 04:41:03.193557 UTC\"}",
+       [
+         { "header": "Token:", "prompt": "free.mytoken-123" },
+         { "header": "Transfer", "prompt": "23.67 from k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995 to k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790 on network testnet04" },
+         { "header": "Paying Gas", "prompt": "at most 2300 at price 1.0e-6" },
+         {"text": "Sign Transaction?", "x": 19, "y": 11,},
+         {"text": "Confirm", "x": 43, "y": 11,}
+       ]
+     ));
+  it("can build a custom token cross-chain transfer tx",
+     checkSignTransferTxAPIs(
+       "signTransferCrossChainTx",
+       {
+         path: "44'/626'/0'/0/0",
+         recipient: '83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790',
+         recipient_chainId: 2,
+         amount: "23.67",
+         namespace: "free",
+         module: "mytoken-123",
+         network: "testnet04",
+         chainId: 1,
+         gasPrice: "1.0e-6",
+         gasLimit: "2300",
+         creationTime: 1665722463,
+         ttl: "600",
+         nonce: "2022-10-14 04:41:03.193557 UTC"
+       },
+       "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":{\"ks\":{\"pred\":\"keys-all\",\"keys\":[\"83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\"]}},\"code\":\"(free.mytoken-123.transfer-crosschain \\\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\\\" \\\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\\\" (read-keyset \\\"ks\\\") \\\"2\\\" 23.67)\"}},\"signers\":[{\"pubKey\":\"9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"clist\":[{\"args\":[\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\",\"k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790\",23.67,\"2\"],\"name\":\"free.mytoken-123.TRANSFER_XCHAIN\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1665722463,\"ttl\":600,\"gasLimit\":2300,\"chainId\":\"1\",\"gasPrice\":1.0e-6,\"sender\":\"k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995\"},\"nonce\":\"2022-10-14 04:41:03.193557 UTC\"}",
+       [
+         { "header": "Token:", "prompt": "free.mytoken-123" },
+         { "header": "Transfer", "prompt": "Cross-chain 23.67 from k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995 to k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790 to chain 2 on network testnet04" },
+         { "header": "Paying Gas", "prompt": "at most 2300 at price 1.0e-6" },
+         {"text": "Sign Transaction?", "x": 19, "y": 11,},
+         {"text": "Confirm", "x": 43, "y": 11,}
+       ]
+     ));
+  })
