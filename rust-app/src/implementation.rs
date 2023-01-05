@@ -9,7 +9,7 @@ use ledger_crypto_helpers::eddsa::{
     ed25519_public_key_bytes, eddsa_sign, eddsa_sign_int, with_public_keys, with_public_keys_int,
     Ed25519RawPubKeyAddress,
 };
-use ledger_crypto_helpers::hasher::{Blake2b, Hash, Hasher};
+use ledger_crypto_helpers::hasher::{Base64Hash, Blake2b, Hasher};
 use ledger_log::info;
 use ledger_parser_combinators::core_parsers::Alt;
 use ledger_parser_combinators::interp_parser::{
@@ -20,7 +20,7 @@ use ledger_parser_combinators::json::Json;
 use ledger_prompts_ui::{final_accept_prompt, mk_prompt_write, PromptWrite, ScrollerError};
 
 use core::convert::TryFrom;
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 use core::str::from_utf8;
 use ledger_parser_combinators::define_json_struct_interp;
 use ledger_parser_combinators::interp_parser::*;
@@ -192,8 +192,9 @@ pub static SIGN_IMPL: SignImplT = Action(
                 )),
             true),
             // Ask the user if they accept the transaction body's hash
-            mkfn(|(_, mut hasher): &(_, Blake2b), destination: &mut Option<Zeroizing<Hash<32>>>| {
-                let the_hash = hasher.finalize();
+            mkfn(|(_, mut hasher): &(_, Blake2b),
+            destination: &mut Option<Zeroizing<Base64Hash<32>>>| {
+                let the_hash: Zeroizing<Base64Hash<32>> = hasher.finalize();
                 scroller("Transaction hash", |w| Ok(write!(w, "{}", the_hash.deref())?))?;
                 *destination=Some(the_hash);
                 Some(())
@@ -212,7 +213,7 @@ pub static SIGN_IMPL: SignImplT = Action(
             }),
         ),
     ),
-    mkfn(|(hash, path): &(Option<Zeroizing<Hash<32>>>, Option<ArrayVec<u32, 10>>), destination: &mut _| {
+    mkfn(|(hash, path): &(Option<Zeroizing<Base64Hash<32>>>, Option<ArrayVec<u32, 10>>), destination: &mut _| {
         #[allow(clippy::needless_borrow)] // Needed for nanos
         final_accept_prompt(&[&"Sign Transaction?"])?;
 
@@ -515,10 +516,10 @@ pub static SIGN_HASH_IMPL: SignHashImplT = Action(
             Action(
                 SubInterp(DefaultInterp),
                 // Ask the user if they accept the transaction body's hash
-                mkfn(|hash_val: &[u8; 32], destination: &mut Option<[u8; 32]>| {
-                    let the_hash = Hash(*hash_val);
+                mkfn(|hash_val: &[u8; 32], destination: &mut Option<Zeroizing<Base64Hash<32>>>| {
+                    let the_hash = Base64Hash(*hash_val);
                     scroller("Transaction hash", |w| Ok(write!(w, "{}", the_hash)?))?;
-                    *destination = Some(the_hash.0);
+                    *destination = Some(zeroize::Zeroizing::new(the_hash));
                     Some(())
                 }),
             ),
@@ -542,12 +543,12 @@ pub static SIGN_HASH_IMPL: SignHashImplT = Action(
         ),
     ),
     mkfn(
-        |(hash, path): &(Option<[u8; 32]>, Option<ArrayVec<u32, 10>>), destination: &mut _| {
+        |(hash, path): &(Option<Zeroizing<Base64Hash<32>>>, Option<ArrayVec<u32, 10>>), destination: &mut _| {
             #[allow(clippy::needless_borrow)] // Needed for nanos
             final_accept_prompt(&[&"Sign Transaction Hash?"])?;
 
             // By the time we get here, we've approved and just need to do the signature.
-            let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?[..]).ok()?;
+            let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?.0[..]).ok()?;
             let mut rv = ArrayVec::<u8, 128>::new();
             rv.try_extend_from_slice(&sig.0[..]).ok()?;
             *destination = Some(rv);
@@ -1155,8 +1156,8 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
                             *destination = Some(ArrayVec::new());
 
                             let mut add_sig = || -> Option<()> {
-                                let hash = hasher.finalize();
-                                let sig = eddsa_sign_int(privkey, &hash.0).ok()?;
+                                let mut hash: Zeroizing<Base64Hash<32>> = hasher.finalize();
+                                let sig = eddsa_sign_int(privkey, hash.deref_mut().0.as_mut()).ok()?;
                                 destination
                                     .as_mut()?
                                     .try_extend_from_slice(&sig.0[..])
