@@ -38,12 +38,6 @@ type PKH = Ed25519RawPubKeyAddress;
 const fn mkfnc<A, B, C>(q: fn(&A, &mut B, C) -> Option<()>) -> fn(&A, &mut B, C) -> Option<()> {
     q
 }
-const fn mkvfn<A>(
-    q: fn(&A, &mut Option<()>) -> Option<()>,
-) -> fn(&A, &mut Option<()>) -> Option<()> {
-    q
-}
-
 
 fn mkstr(v: Option<&[u8]>) -> Result<&str, ScrollerError> {
     Ok(from_utf8(v.ok_or(ScrollerError)?)?)
