@@ -1,172 +1,16 @@
+import { sendCommandAndAccept, BASE_URL, sendCommandExpectFail, toggleBlindSigningSettings } from "./common";
 import { expect } from 'chai';
 import { describe, it, before, afterEach } from 'mocha';
-import SpeculosTransport from '@ledgerhq/hw-transport-node-speculos';
 import Axios from 'axios';
-import Transport from "./common";
 import Kda from "hw-app-kda";
 import * as fs from 'fs';
 import * as blake2b from "blake2b";
-// import libsodium from "libsodium-wrappers";
-
-// await libsodium.ready;
 import { instantiate, Nacl } from "js-nacl";
-
 
 let nacl : Nacl =null;
 
-let ignoredScreens = [ "W e l c o m e", "Cancel", "Working...", "Quit", "Kadena 0.2.2", "Back"
-  , "Blind Signing", "Enable Blind Signing", "Disable Blind Signing"
-  /* The next ones are specifically for S+ in which OCR is broken */
-  , "Blind igning", "Enable Blind igning", "Disable Blind igning", "Blind igningQuit", "QuitQuit" ];
-
-const API_PORT: number = 5005;
-
-const BASE_URL: string = `http://127.0.0.1:${API_PORT}`;
-
-let setAcceptAutomationRules = async function() {
-    await Axios.post(BASE_URL + "/automation", {
-      version: 1,
-      rules: [
-        ... ignoredScreens.map(txt => { return { "text": txt, "actions": [] } }),
-        { "y": 16, "actions": [] },
-        { "y": 31, "actions": [] },
-        { "y": 46, "actions": [] },
-        { "text": "Confirm", "actions": [ [ "button", 1, true ], [ "button", 2, true ], [ "button", 2, false ], [ "button", 1, false ] ]},
-        { "actions": [ [ "button", 2, true ], [ "button", 2, false ] ]}
-      ]
-    });
-}
-
-let processPrompts = function(prompts: [any]) {
-  let i = prompts.filter((a : any) => !ignoredScreens.includes(a["text"])); // .values();
-  let header = "";
-  let prompt = "";
-  let rv = [];
-  let working_screen = "Working...";
-  for (var ii in i) {
-    let value = i[ii];
-    if(value["y"] == 1) {
-      if(value["text"] != header) {
-        if(header || prompt) rv.push({ header, prompt });
-        header = value["text"];
-        prompt = "";
-      }
-    } else if(value["y"] == 11 && value["text"].startsWith(working_screen) && value["text"] != working_screen) {
-      if(header || prompt) rv.push({ header, prompt });
-      header = value["text"].substring(working_screen.length);
-      prompt = "";
-    } else if(value["y"] == 16) {
-      prompt += value["text"];
-    } else if((value["y"] == 31)) {
-      prompt += value["text"];
-    } else if((value["y"] == 46)) {
-      prompt += value["text"];
-    } else {
-      if(header || prompt) rv.push({ header, prompt });
-      rv.push(value);
-      header = "";
-      prompt = "";
-    }
-  }
-  if (header || prompt) rv.push({ header, prompt });
-  return rv;
-}
-
-let fixActualPromptsForSPlus = function(prompts: any[]) {
-  return prompts.map ( (value) => {
-    if (value["text"]) {
-      value["x"] = "<patched>";
-    }
-    return value;
-  });
-}
-
-// HACK to workaround the OCR bug https://github.com/LedgerHQ/speculos/issues/204
-let fixRefPromptsForSPlus = function(prompts: any[]) {
-  return prompts.map ( (value) => {
-    let fixF = (str: string) => {
-      return str.replace(/S/g,"").replace(/I/g, "l");
-    };
-    if (value["header"]) {
-      value["header"] = fixF(value["header"]);
-      value["prompt"] = fixF(value["prompt"]);
-    } else if (value["text"]) {
-      value["text"] = fixF(value["text"]);
-      value["x"] = "<patched>";
-    }
-    return value;
-  });
-}
-
-const paginate_prompts = function(page_length: number, prompts: any[]) {
-  let rv = [];
-  for (var ii in prompts) {
-    const value = prompts[ii];
-    if (value["paginate"]) {
-      const header = value["header"];
-      const prompt = value["prompt"];
-      let prompt_chunks = prompt.match(new RegExp('.{1,' + page_length + '}', 'g'));
-      if (prompt_chunks.length == 1) {
-        rv.push({header, prompt});
-      } else {
-        for (var j in prompt_chunks) {
-          const chunk = prompt_chunks[j];
-          let header_j = header + " (" + (Number(j) + 1).toString() + "/" + prompt_chunks.length.toString() + ")";
-          rv.push({"header": header_j, "prompt": chunk});
-        }
-      }
-    } else {
-      rv.push(value);
-    }
-  }
-  return rv;
-}
-
-let sendCommandAndAccept = async function(command : any, prompts : any) {
-    await setAcceptAutomationRules();
-    await Axios.delete(BASE_URL + "/events");
-
-    let transport = await Transport.open(BASE_URL + "/apdu");
-    let kda = new Kda(transport);
-
-    //await new Promise(resolve => setTimeout(resolve, 100));
-
-    let err = null;
-
-    try { await command(kda); } catch(e) {
-      err = e;
-    }
-
-    //await new Promise(resolve => setTimeout(resolve, 100));
-
-    let actual_prompts = processPrompts((await Axios.get(BASE_URL + "/events")).data["events"] as [any]);
-    try {
-      expect(actual_prompts).to.deep.equal(paginate_prompts(16, prompts));
-    } catch(e) {
-      try {
-        expect(fixActualPromptsForSPlus(actual_prompts)).to.deep.equal(fixRefPromptsForSPlus(paginate_prompts(48, prompts)));
-      } catch (_) {
-        // Throw the original error if there is a mismatch as it is generally more useful
-        throw(e);
-      }
-    }
-
-    if(err) throw(err);
-}
-
-let sendCommandExpectFail = async function(command : any) {
-  await setAcceptAutomationRules();
-  await Axios.delete(BASE_URL + "/events");
-
-  let transport = await Transport.open("http://127.0.0.1:5000/apdu");
-  let kda = new Kda(transport);
-  try { await command(kda); } catch(e) {
-    return;
-  }
-  expect.fail("Test should have failed");
-}
-
 instantiate(n => { nacl=n; });
+
 describe('basic tests', async function() {
 
   afterEach( async function() {
@@ -176,11 +20,9 @@ describe('basic tests', async function() {
 
   it('provides a public key', async () => {
 
-    await sendCommandAndAccept(async (kda : Kda) => {
-      console.log("Started pubkey get");
-      let rv = await kda.getPublicKey("44'/626'/0");
-      console.log("Reached Pubkey Got");
-      expect(rv.publicKey).to.equal("3f6f820616c6d999667deca91a0eccf25f62e2c910a4e77e811241445db888d7");
+    await sendCommandAndAccept(async (client : Kda) => {
+      const rv = await client.getPublicKey("44'/626'/0");
+      expect(new Buffer(rv.publicKey).toString('hex')).to.equal("3f6f820616c6d999667deca91a0eccf25f62e2c910a4e77e811241445db888d7");
       return;
     }, [
       { "header": "Provide Public Key",
@@ -195,11 +37,9 @@ describe('basic tests', async function() {
   });
 
   it('provides a public key', async () => {
-  await sendCommandAndAccept(async (kda : Kda) => {
-      console.log("Started pubkey get");
-      let rv = await kda.getPublicKey("44'/626'/1");
-      console.log("Reached Pubkey Got");
-      expect(rv.publicKey).to.equal("10f26b7f3a51d6b9ebbff3a58a5b79fcdef154cbb1fb865af2ee55089a2a1d4f");
+    await sendCommandAndAccept(async (client : Kda) => {
+      const rv = await client.getPublicKey("44'/626'/1");
+      expect(new Buffer(rv.publicKey).toString('hex')).to.equal("10f26b7f3a51d6b9ebbff3a58a5b79fcdef154cbb1fb865af2ee55089a2a1d4f");
       return;
     }, [
         {
@@ -217,23 +57,28 @@ describe('basic tests', async function() {
 });
 
 
-function testTransaction(path: string, txn: string, prompts: any[]) {
-     return async () => {
-       await sendCommandAndAccept(
-         async (kda : Kda) => {
-           let pubkey = (await kda.getPublicKey(path)).publicKey;
-           await Axios.delete(BASE_URL + "/events");
+function testTransaction(path: string, txn0: string, prompts: any[]) {
+  return async () => {
+    await sendCommandAndAccept(async (client : Kda) => {
+      const txn = Buffer.from(txn0, "utf-8");
+      const { publicKey } = await client.getPublicKey(path);
 
-           let rv = await kda.signTransaction(path, Buffer.from(txn, "utf-8").toString("hex"));
-           expect(rv.signature.length).to.equal(128);
-           let hash = blake2b(32).update(Buffer.from(txn, "utf-8")).digest();
-           let pass = nacl.crypto_sign_verify_detached(Buffer.from(rv.signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
-           expect(pass).to.equal(true);
-         }, prompts);
-     }
+      // We don't want the prompts from getPublicKey in our result
+      await Axios.delete(BASE_URL + "/events");
+
+      const sig = await client.signTransaction(path, txn);
+      expect(sig.signature.length).to.equal(64);
+      const hash = blake2b(32).update(txn).digest();
+      const pass = nacl.crypto_sign_verify_detached(sig.signature, hash, publicKey);
+      expect(pass).to.equal(true);
+    }, prompts);
+  }
 }
 
 describe("Signing tests", function() {
+  before( async function() {
+    while(!nacl) await new Promise(r => setTimeout(r, 100));
+  })
 
   it("can sign a simple transfer",
      testTransaction(
@@ -974,17 +819,20 @@ describe("Signing tests", function() {
 function testSignHash(path: string, hash: string, prompts: any[]) {
      return async () => {
        await sendCommandAndAccept(
-         async (kda : Kda) => {
-           let pubkey = (await kda.getPublicKey(path)).publicKey;
-           await toggleHashSettings();
+         async (client : Kda) => {
+           const { publicKey } = await client.getPublicKey(path);
+
+           await toggleBlindSigningSettings();
            await Axios.delete(BASE_URL + "/events");
-           let rv = await kda.signHash(path, hash);
-           expect(rv.signature.length).to.equal(128);
+
+           const sig = await client.signHash(path, hash);
+
+           expect(sig.signature.length).to.equal(64);
            const rawHash = hash.length == 64 ? Buffer.from(hash, "hex") : Buffer.from(hash, "base64");
-           let pass = nacl.crypto_sign_verify_detached(Buffer.from(rv.signature, 'hex'), rawHash, Buffer.from(pubkey, 'hex'));
+           const pass = nacl.crypto_sign_verify_detached(sig.signature, rawHash, publicKey);
            expect(pass).to.equal(true);
            // reset setting
-           await toggleHashSettings();
+           await toggleBlindSigningSettings();
          }, prompts);
      }
 }
@@ -1003,20 +851,12 @@ function testSignHashFail2(path: string, hash: string) {
     await sendCommandExpectFail(
       async (kda : Kda) => {
         // Enable and then disable
-        await toggleHashSettings();
-        await toggleHashSettings();
+        await toggleBlindSigningSettings();
+        await toggleBlindSigningSettings();
         await Axios.delete(BASE_URL + "/events");
         await kda.signHash(path, hash);
       });
   }
-}
-
-let toggleHashSettings = async function() {
-  await Axios.post(BASE_URL + "/button/right", {"action":"press-and-release"});
-  await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
-  await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
-  await Axios.post(BASE_URL + "/button/right", {"action":"press-and-release"});
-  await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
 }
 
 describe('Hash Signing Tests', function() {
@@ -1344,15 +1184,16 @@ describe("Capability Signing tests", function() {
        ];
 
     await sendCommandAndAccept(
-      async (kda : Kda) => {
-        let pubkey = (await kda.getPublicKey(path)).publicKey;
+      async (client : Kda) => {
+        const { publicKey } = await client.getPublicKey(path);
         await Axios.delete(BASE_URL + "/events");
 
         let txn = await fs.readFileSync(file);
-        let rv = await kda.signTransaction(path, txn);
-        expect(rv.signature.length).to.equal(128);
-        let hash = blake2b(32).update(txn).digest();
-        let pass = nacl.crypto_sign_verify_detached(Buffer.from(rv.signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
+
+        const sig = await client.signTransaction(path, txn);
+        expect(sig.signature.length).to.equal(64);
+        const hash = blake2b(32).update(txn).digest();
+        const pass = nacl.crypto_sign_verify_detached(sig.signature, hash, publicKey);
         expect(pass).to.equal(true);
       }, prompts);
   });
@@ -1364,17 +1205,17 @@ function checkSignTransferTxAPIs(apiName: any,
                         prompts: any[]) {
   return async () => {
     await sendCommandAndAccept(
-      async (kda : Kda) => {
-        let pubkey = (await kda.getPublicKey(params.path)).publicKey;
+      async (client : Kda) => {
+        const { publicKey } = await client.getPublicKey(params.path);
         await Axios.delete(BASE_URL + "/events");
         try {
-          let rv = await kda[apiName](params);
+          let rv = await client[apiName](params);
           let signature = rv.pact_command.sigs[0].sig;
           expect(signature.length).to.equal(128);
           expect(rv.pact_command.cmd).to.equal(txn);
-          expect(rv.pubkey).to.equal(pubkey);
+          expect(rv.pubkey).to.equal(new Buffer(publicKey).toString('hex'));
           let hash = blake2b(32).update(Buffer.from(txn, "utf-8")).digest();
-          let pass = nacl.crypto_sign_verify_detached(Buffer.from(signature, 'hex'), hash, Buffer.from(pubkey, 'hex'));
+          let pass = nacl.crypto_sign_verify_detached(Buffer.from(signature, 'hex'), hash, publicKey);
           expect(pass).to.equal(true);
         } catch (e) {
           console.log("Error:", apiName, e);
@@ -1560,3 +1401,14 @@ describe('Create Tx tests', function() {
        ]
      ));
   })
+
+describe("get version tests", function() {
+  it("can get app version", async () => {
+    await sendCommandAndAccept(async (client : any) => {
+      var rv = await client.getVersion();
+      expect(rv.major).to.equal(0);
+      expect(rv.minor).to.equal(2);
+      expect(rv.patch).to.equal(2);
+      }, []);
+    });
+});
