@@ -18,7 +18,7 @@ pub fn app_main() {
     let mut states = ParsersState::NoState;
     let mut idle_menu = IdleMenuWithSettings {
         idle_menu: IdleMenu::AppMain,
-        settings: Settings::new(),
+        settings: Settings::default(),
     };
     let mut busy_menu = BusyMenu::Working;
 
@@ -52,10 +52,9 @@ pub fn app_main() {
                     Err(sw) => comm.reply(sw),
                 };
                 // Reset BusyMenu if we are done handling APDU
-                match states {
-                    ParsersState::NoState => busy_menu = BusyMenu::Working,
-                    _ => {}
-                };
+                if let ParsersState::NoState = states {
+                    busy_menu = BusyMenu::Working;
+                }
                 menu(&states, &idle_menu, &busy_menu);
                 trace!("Command done");
             }
@@ -161,9 +160,18 @@ fn handle_apdu(
             ]);
             comm.append(b"Kadena");
         }
-        Ins::GetPubkey => {
-            run_parser_apdu::<_, Bip32Key>(parser, get_get_address_state, &GET_ADDRESS_IMPL, comm)?
-        }
+        Ins::VerifyAddress => run_parser_apdu::<_, Bip32Key>(
+            parser,
+            get_get_address_state::<true>,
+            &get_address_impl::<true>(),
+            comm,
+        )?,
+        Ins::GetPubkey => run_parser_apdu::<_, Bip32Key>(
+            parser,
+            get_get_address_state::<false>,
+            &get_address_impl::<false>(),
+            comm,
+        )?,
         Ins::Sign => {
             run_parser_apdu::<_, SignParameters>(parser, get_sign_state, &SIGN_IMPL, comm)?
         }

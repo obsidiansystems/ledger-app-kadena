@@ -50,31 +50,41 @@ fn mkstr(v: Option<&[u8]>) -> Result<&str, ScrollerError> {
 }
 
 pub type GetAddressImplT = impl InterpParser<Bip32Key, Returning = ArrayVec<u8, 128_usize>>;
-pub const GET_ADDRESS_IMPL: GetAddressImplT = Action(
-    SubInterp(DefaultInterp),
-    mkfn(
-        |path: &ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u8, 128>>| -> Option<()> {
-            with_public_keys(path, false, |key: &_, pkh: &PKH| {
-                try_option(|| -> Option<()> {
-                    scroller("Provide Public Key", |w| Ok(write!(w, "{}", pkh)?))?;
 
-                    final_accept_prompt(&[])?;
+// Need a path of length 5, as make_bip32_path panics with smaller paths
+pub const BIP32_PREFIX: [u32; 5] = nanos_sdk::ecc::make_bip32_path(b"m/44'/626'/123'/0'/0'");
 
-                    *destination = Some(ArrayVec::new());
-                    // key without y parity
-                    let key_x = ed25519_public_key_bytes(key);
-                    destination
-                        .as_mut()?
-                        .try_push(u8::try_from(key_x.len()).ok()?)
-                        .ok()?;
-                    destination.as_mut()?.try_extend_from_slice(key_x).ok()?;
-                    Some(())
-                }())
-            })
-            .ok()
-        },
-    ),
-);
+pub const fn get_address_impl<const PROMPT: bool>() -> GetAddressImplT {
+    Action(
+        SubInterp(DefaultInterp),
+        mkfn(
+            |path: &ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u8, 128>>| -> Option<()> {
+                if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                    return None;
+                }
+                with_public_keys(path, false, |key: &_, pkh: &PKH| {
+                    try_option(|| -> Option<()> {
+                        if PROMPT {
+                            scroller("Provide Public Key", |_w| Ok(()))?;
+                            scroller_paginated("Address", |w| Ok(write!(w, "{pkh}")?))?;
+                            final_accept_prompt(&[])?;
+                        }
+                        *destination = Some(ArrayVec::new());
+                        // key without y parity
+                        let key_x = ed25519_public_key_bytes(key);
+                        destination
+                            .as_mut()?
+                            .try_push(u8::try_from(key_x.len()).ok()?)
+                            .ok()?;
+                        destination.as_mut()?.try_extend_from_slice(key_x).ok()?;
+                        Some(())
+                    }())
+                })
+                .ok()
+            },
+        ),
+    )
+}
 
 pub type SignImplT = impl InterpParser<SignParameters, Returning = ArrayVec<u8, 128_usize>>;
 
@@ -181,6 +191,9 @@ pub static SIGN_IMPL: SignImplT = Action(
             SubInterp(DefaultInterp),
             // And ask the user if this is the key the meant to sign with:
             mkmvfn(|path: ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u32, 10>>| {
+                if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                    return None;
+                }
                 with_public_keys(&path, false, |_, pkh: &PKH| { try_option(|| -> Option<()> {
                     scroller("Sign for Address", |w| Ok(write!(w, "{pkh}")?))?;
                     Some(())
@@ -1169,7 +1182,7 @@ command_definition! {}
 kadena_cmd_definition! {}
 
 #[inline(never)]
-pub fn get_get_address_state(
+pub fn get_get_address_state<const PROMPT: bool>(
     s: &mut ParsersState,
 ) -> &mut <GetAddressImplT as ParserCommon<Bip32Key>>::State {
     match s {
@@ -1177,14 +1190,14 @@ pub fn get_get_address_state(
         _ => {
             info!("Non-same state found; initializing state.");
             *s = ParsersState::GetAddressState(<GetAddressImplT as ParserCommon<Bip32Key>>::init(
-                &GET_ADDRESS_IMPL,
+                &get_address_impl::<PROMPT>(),
             ));
         }
     }
     match s {
         ParsersState::GetAddressState(ref mut a) => a,
         _ => {
-            panic!("")
+            unreachable!("Should be impossible because assignment right above")
         }
     }
 }
@@ -1205,7 +1218,7 @@ pub fn get_sign_state(
     match s {
         ParsersState::SignState(ref mut a) => a,
         _ => {
-            panic!("")
+            unreachable!("Should be impossible because assignment right above")
         }
     }
 }
@@ -1247,7 +1260,7 @@ pub fn get_make_transfer_tx_state(
     match s {
         ParsersState::MakeTransferTxState(ref mut a) => a,
         _ => {
-            panic!("")
+            unreachable!("Should be impossible because assignment right above")
         }
     }
 }

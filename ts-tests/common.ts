@@ -4,10 +4,20 @@ import Transport from "./http-transport";
 import Kda from "hw-app-kda";
 import { expect } from 'chai';
 
-const ignoredScreens = [ "W e l c o m e", "Cancel", "Working...", "Exit", "Kadena 0.2.2"
-                         , "Blind Signing", "Enable Blind Signing", "Disable Blind Signing", "Back"
+export const VERSION = {
+  major: 0,
+  minor: 2,
+  patch: 2,
+};
+
+const ignoredScreens = [ "Cancel", "Working...", "Quit", "Version"
+
+                         /* App name and version */
+                         , "Kadena", `${VERSION.major}.${VERSION.minor}.${VERSION.patch}`
+
+                         , "Settings", "Blind Signing", "Enabled", "Disabled", "Back"
                          /* The next ones are specifically for S+ in which OCR is broken */
-                         , "Blind igning", "Enable Blind igning", "Disable Blind igning"
+                         , "ettings", "Blind igning"
                        ];
 
 const API_PORT: number = 5005;
@@ -166,10 +176,12 @@ const sendCommandExpectFail = async function(command : any) {
 
 let toggleBlindSigningSettings = async function() {
   await Axios.post(BASE_URL + "/button/right", {"action":"press-and-release"});
+  await Axios.post(BASE_URL + "/button/right", {"action":"press-and-release"});
   await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
   await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
   await Axios.post(BASE_URL + "/button/right", {"action":"press-and-release"});
   await Axios.post(BASE_URL + "/button/both", {"action":"press-and-release"});
+  await Axios.post(BASE_URL + "/button/left", {"action":"press-and-release"});
   await Axios.post(BASE_URL + "/button/left", {"action":"press-and-release"});
 }
 
