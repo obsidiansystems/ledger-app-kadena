@@ -518,6 +518,9 @@ pub static SIGN_HASH_IMPL: SignHashImplT = Action(
                 // And ask the user if this is the key the meant to sign with:
                 mkmvfn(
                     |path: ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u32, 10>>| {
+                        if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                            return None;
+                        }
                         with_public_keys(&path, false, |_, pkh: &PKH| {
                             try_option(|| -> Option<()> {
                                 scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
@@ -940,6 +943,9 @@ const PATH_PARSER: PathParserT = MoveAction(
     mkmvfn(
         |path: <SubDefT as ParserCommon<Bip32Key>>::Returning,
          destination: &mut Option<HasherAndPrivKey>| {
+             if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                 return None;
+             }
             set_from_thunk(destination, || {
                 Some((Hasher::new(), Ed25519::derive_from_path(&path)))
             });
