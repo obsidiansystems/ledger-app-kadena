@@ -4,3 +4,4 @@ Cargo.nix
 
 result
 result-*
+docker-outputs
