@@ -1,8 +1,8 @@
 #![allow(clippy::type_complexity)]
 use crate::interface::*;
-use crate::*;
 use crate::test_parsers::*;
 use crate::utils::*;
+use crate::*;
 use arrayvec::ArrayString;
 use arrayvec::ArrayVec;
 use core::fmt::Write;
@@ -937,9 +937,9 @@ const PATH_PARSER: PathParserT = MoveAction(
     mkmvfn(
         |path: <SubDefT as ParserCommon<Bip32Key>>::Returning,
          destination: &mut Option<HasherAndPrivKey>| {
-             if !path.starts_with(&BIP32_PREFIX[0..2]) {
-                 return None;
-             }
+            if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                return None;
+            }
             set_from_thunk(destination, || {
                 Some((Hasher::new(), Ed25519::derive_from_path(&path)))
             });
