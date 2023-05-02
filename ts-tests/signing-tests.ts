@@ -814,16 +814,6 @@ function testSignHashFail2(path: string, hash: string) {
 }
 
 describe('Hash Signing Tests', function() {
-  it("cannot sign a hash without settings enabled",
-     testSignHashFail(
-       "44'/626'/0'",
-       '8d5d63bb1071a8dfc5c09ac96cfa50341a74eb91b6ea9ee5724cde09ef758bf2'
-     ));
-  it("cannot sign a hash without settings enabled 2",
-     testSignHashFail2(
-       "44'/626'/0'",
-       '8d5d63bb1071a8dfc5c09ac96cfa50341a74eb91b6ea9ee5724cde09ef758bf2'
-     ));
   it("can sign a hash after enabling settings",
      testSignHash(
        "44'/626'/0'",
@@ -869,6 +859,16 @@ describe('Hash Signing Tests', function() {
            "y": 11,
          }
        ]
+     ));
+  it("cannot sign a hash without settings enabled",
+     testSignHashFail(
+       "44'/626'/0'",
+       '8d5d63bb1071a8dfc5c09ac96cfa50341a74eb91b6ea9ee5724cde09ef758bf2'
+     ));
+  it("cannot sign a hash without settings enabled 2",
+     testSignHashFail2(
+       "44'/626'/0'",
+       '8d5d63bb1071a8dfc5c09ac96cfa50341a74eb91b6ea9ee5724cde09ef758bf2'
      ));
 })
 
