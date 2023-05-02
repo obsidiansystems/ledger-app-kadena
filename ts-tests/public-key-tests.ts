@@ -33,7 +33,7 @@ describe('public key tests', () => {
       },
       {
         "header": "Address",
-        "prompt": "10f26b7f3a51d6b9ebbff3a58a5b79fcdef154cbb1fb865af2ee55089a2a1d4f",
+        "prompt": "k:10f26b7f3a51d6b9ebbff3a58a5b79fcdef154cbb1fb865af2ee55089a2a1d4f",
         "paginate": true,
       },
       {
