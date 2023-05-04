@@ -329,10 +329,14 @@ impl Summable<CapCountData> for CapCountData {
             total_unknown,
         } = self
         {
-            *total_caps += 1;
+            let add1 = |c: &mut u16| match c.checked_add(1) {
+                Some(v) => *c = v,
+                None => panic!("u16 overflow"),
+            };
+            add1(total_caps);
             match other {
-                CapCountData::IsTransfer => *total_transfers += 1,
-                CapCountData::IsUnknownCap => *total_unknown += 1,
+                CapCountData::IsTransfer => add1(total_transfers),
+                CapCountData::IsUnknownCap => add1(total_unknown),
                 _ => {}
             }
         }
