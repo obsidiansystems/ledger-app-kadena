@@ -1,3 +1,12 @@
+## 0.2.3
+
+* Add VERIFY_ADDRESS APDU, which prompts user showing the address.
+* GET_PUBKEY APDU now does not prompt the user for confirmation.
+* Improvements to the menu; show icons.
+* Fix crash when incorrect BIP32 path is provided.
+* Support for NanosS+ FW 1.1.0.
+* Fixes and upgrades to the build infrastructure.
+
 ## 0.2.2
 
 * Changes to the prompts for the transfer transaction signing flow. Show the sender, recipient and amount in separate prompts and do pagination of prompts.
