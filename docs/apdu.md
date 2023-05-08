@@ -8,7 +8,8 @@ All commands use `CLA = 0x00`
 | CLA | INS | COMMAND NAME     | DESCRIPTION                                                    |
 |-----|-----|------------------|----------------------------------------------------------------|
 | 00  | 00  | GET_VERSION      | Gets the app version in machine readable format (bytes)        |
-| 00  | 02  | GET_PUBKEY       | Gets the Public Key (after obtaining user confirmation)        |
+| 00  | 01  | VERIFY_ADDRESS   | Shows the Address on device for a BIP32 path                   |
+| 00  | 02  | GET_PUBKEY       | Gets the Public Key and Address for a BIP32 path               |
 | 00  | 03  | SIGN_JSON_TX     | Sign a Transaction specified in JSON                           |
 | 00  | 04  | SIGN_TX_HASH     | Sign a Transaction Hash (requires Blind Signing to be enabled) |
 | 00  | 10  | MAKE_TRANSFER_TX | Build a transfer transaction and sign it                       |
@@ -36,6 +37,35 @@ Returns the version of the app currently running on the Ledger in machine readab
 | `1`          | Minor version   |
 | `1`          | Patch version   |
 | `<variable>` | Name of the app |
+
+### VERIFY_ADDRESS
+
+Shows the address for the given derivation path, and returns the public key.
+
+#### Encoding
+
+**Command**
+
+| *CLA* | *INS* |
+|-------|-------|
+| 00    | 01    |
+
+**Input data**
+
+| Length | Name              | Description                         |
+|--------|-------------------|-------------------------------------|
+| `1`    | `n`               | Number of derivation steps          |
+| `4`    | `bip32_path[0]`   | First derivation step (big endian)  |
+| `4`    | `bip32_path[1]`   | Second derivation step (big endian) |
+|        | ...               |                                     |
+| `4`    | `bip32_path[n-1]` | `n`-th derivation step (big endian) |
+
+**Output data**
+
+| Length       | Description                  |
+|--------------|------------------------------|
+| `1`          | The length of the public key |
+| `<variable>` | Public key                   |
 
 ### GET_PUBKEY
 

@@ -1,5 +1,6 @@
 #![allow(clippy::type_complexity)]
 use crate::interface::*;
+use crate::utils::*;
 use crate::*;
 use arrayvec::ArrayString;
 use arrayvec::ArrayVec;
@@ -9,9 +10,10 @@ use ledger_crypto_helpers::eddsa::{
     ed25519_public_key_bytes, eddsa_sign, eddsa_sign_int, with_public_keys, with_public_keys_int,
     Ed25519RawPubKeyAddress,
 };
-use ledger_crypto_helpers::hasher::{Blake2b, Hash, Hasher};
-use ledger_log::info;
+use ledger_crypto_helpers::hasher::{Base64Hash, Blake2b, Hasher};
+use ledger_log::{info, trace};
 use ledger_parser_combinators::core_parsers::Alt;
+use ledger_parser_combinators::endianness::*;
 use ledger_parser_combinators::interp_parser::{
     set_from_thunk, Action, DefaultInterp, DropInterp, InterpParser, ObserveLengthedBytes,
     SubInterp, OOB,
@@ -28,61 +30,12 @@ use ledger_parser_combinators::json::*;
 use ledger_parser_combinators::json_interp::*;
 use zeroize::Zeroizing;
 
-use nanos_sdk::ecc::{ECPrivateKey, Ed25519};
+use nanos_sdk::ecc::{ECPrivateKey, Ed25519, SeedDerive};
 
 #[allow(clippy::upper_case_acronyms)]
 type PKH = Ed25519RawPubKeyAddress;
-
-// A couple type ascription functions to help the compiler along.
-const fn mkfn<A, B>(q: fn(&A, &mut B) -> Option<()>) -> fn(&A, &mut B) -> Option<()> {
-    q
-}
-const fn mkmvfn<A, B, C>(q: fn(A, &mut B) -> Option<C>) -> fn(A, &mut B) -> Option<C> {
-    q
-}
 const fn mkfnc<A, B, C>(q: fn(&A, &mut B, C) -> Option<()>) -> fn(&A, &mut B, C) -> Option<()> {
     q
-}
-const fn mkvfn<A>(
-    q: fn(&A, &mut Option<()>) -> Option<()>,
-) -> fn(&A, &mut Option<()>) -> Option<()> {
-    q
-}
-
-#[cfg(not(target_os = "nanos"))]
-#[inline(never)]
-pub fn scroller<F: for<'b> Fn(&mut PromptWrite<'b, 16>) -> Result<(), ScrollerError>>(
-    title: &str,
-    prompt_function: F,
-) -> Option<()> {
-    ledger_prompts_ui::write_scroller_three_rows(false, title, prompt_function)
-}
-
-#[cfg(target_os = "nanos")]
-#[inline(never)]
-pub fn scroller<F: for<'b> Fn(&mut PromptWrite<'b, 16>) -> Result<(), ScrollerError>>(
-    title: &str,
-    prompt_function: F,
-) -> Option<()> {
-    ledger_prompts_ui::write_scroller(false, title, prompt_function)
-}
-
-#[cfg(not(target_os = "nanos"))]
-#[inline(never)]
-pub fn scroller_paginated<F: for<'b> Fn(&mut PromptWrite<'b, 16>) -> Result<(), ScrollerError>>(
-    title: &str,
-    prompt_function: F,
-) -> Option<()> {
-    ledger_prompts_ui::write_scroller_three_rows(true, title, prompt_function)
-}
-
-#[cfg(target_os = "nanos")]
-#[inline(never)]
-pub fn scroller_paginated<F: for<'b> Fn(&mut PromptWrite<'b, 16>) -> Result<(), ScrollerError>>(
-    title: &str,
-    prompt_function: F,
-) -> Option<()> {
-    ledger_prompts_ui::write_scroller(true, title, prompt_function)
 }
 
 fn mkstr(v: Option<&[u8]>) -> Result<&str, ScrollerError> {
@@ -90,31 +43,41 @@ fn mkstr(v: Option<&[u8]>) -> Result<&str, ScrollerError> {
 }
 
 pub type GetAddressImplT = impl InterpParser<Bip32Key, Returning = ArrayVec<u8, 128_usize>>;
-pub const GET_ADDRESS_IMPL: GetAddressImplT = Action(
-    SubInterp(DefaultInterp),
-    mkfn(
-        |path: &ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u8, 128>>| {
-            with_public_keys(path, |key: &_, pkh: &PKH| {
-                try_option(|| -> Option<()> {
-                    scroller("Provide Public Key", |w| Ok(write!(w, "{}", pkh)?))?;
 
-                    final_accept_prompt(&[])?;
+// Need a path of length 5, as make_bip32_path panics with smaller paths
+pub const BIP32_PREFIX: [u32; 5] = nanos_sdk::ecc::make_bip32_path(b"m/44'/626'/123'/0'/0'");
 
-                    *destination = Some(ArrayVec::new());
-                    // key without y parity
-                    let key_x = ed25519_public_key_bytes(key);
-                    destination
-                        .as_mut()?
-                        .try_push(u8::try_from(key_x.len()).ok()?)
-                        .ok()?;
-                    destination.as_mut()?.try_extend_from_slice(key_x).ok()?;
-                    Some(())
-                }())
-            })
-            .ok()
-        },
-    ),
-);
+pub const fn get_address_impl<const PROMPT: bool>() -> GetAddressImplT {
+    Action(
+        SubInterp(DefaultInterp),
+        mkfn(
+            |path: &ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u8, 128>>| -> Option<()> {
+                if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                    return None;
+                }
+                with_public_keys(path, false, |key: &_, pkh: &PKH| {
+                    try_option(|| -> Option<()> {
+                        if PROMPT {
+                            scroller("Provide Public Key", |_w| Ok(()))?;
+                            scroller_paginated("Address", |w| Ok(write!(w, "k:{pkh}")?))?;
+                            final_accept_prompt(&[])?;
+                        }
+                        *destination = Some(ArrayVec::new());
+                        // key without y parity
+                        let key_x = ed25519_public_key_bytes(key);
+                        destination
+                            .as_mut()?
+                            .try_push(u8::try_from(key_x.len()).ok()?)
+                            .ok()?;
+                        destination.as_mut()?.try_extend_from_slice(key_x).ok()?;
+                        Some(())
+                    }())
+                })
+                .ok()
+            },
+        ),
+    )
+}
 
 pub type SignImplT = impl InterpParser<SignParameters, Returning = ArrayVec<u8, 128_usize>>;
 
@@ -210,8 +173,8 @@ pub static SIGN_IMPL: SignImplT = Action(
                 )),
             true),
             // Ask the user if they accept the transaction body's hash
-            mkfn(|(_, mut hasher): &(_, Blake2b), destination: &mut Option<Zeroizing<Hash<32>>>| {
-                let the_hash = hasher.finalize();
+            mkfn(|(_, mut hasher): &(_, Blake2b), destination: &mut Option<Zeroizing<Base64Hash<32>>>| {
+                let the_hash: Zeroizing<Base64Hash<32>> = hasher.finalize();
                 scroller("Transaction hash", |w| Ok(write!(w, "{}", the_hash.deref())?))?;
                 *destination=Some(the_hash);
                 Some(())
@@ -221,7 +184,10 @@ pub static SIGN_IMPL: SignImplT = Action(
             SubInterp(DefaultInterp),
             // And ask the user if this is the key the meant to sign with:
             mkmvfn(|path: ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u32, 10>>| {
-                with_public_keys(&path, |_, pkh: &PKH| { try_option(|| -> Option<()> {
+                if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                    return None;
+                }
+                with_public_keys(&path, false, |_, pkh: &PKH| { try_option(|| -> Option<()> {
                     scroller("Sign for Address", |w| Ok(write!(w, "{pkh}")?))?;
                     Some(())
                 }())}).ok()?;
@@ -230,12 +196,12 @@ pub static SIGN_IMPL: SignImplT = Action(
             }),
         ),
     ),
-    mkfn(|(hash, path): &(Option<Zeroizing<Hash<32>>>, Option<ArrayVec<u32, 10>>), destination: &mut _| {
+    mkfn(|(hash, path): &(Option<Zeroizing<Base64Hash<32>>>, Option<ArrayVec<u32, 10>>), destination: &mut _| {
         #[allow(clippy::needless_borrow)] // Needed for nanos
         final_accept_prompt(&[&"Sign Transaction?"])?;
 
         // By the time we get here, we've approved and just need to do the signature.
-        let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?.0[..]).ok()?;
+        let sig = eddsa_sign(path.as_ref()?, false, &hash.as_ref()?.0[..]).ok()?;
         let mut rv = ArrayVec::<u8, 128>::new();
         rv.try_extend_from_slice(&sig.0[..]).ok()?;
         *destination = Some(rv);
@@ -538,7 +504,7 @@ pub static SIGN_HASH_IMPL: SignHashImplT = Action(
                 SubInterp(DefaultInterp),
                 // Ask the user if they accept the transaction body's hash
                 mkfn(|hash_val: &[u8; 32], destination: &mut Option<[u8; 32]>| {
-                    let the_hash = Hash(*hash_val);
+                    let the_hash = Base64Hash(*hash_val);
                     scroller("Transaction hash", |w| Ok(write!(w, "{}", the_hash)?))?;
                     *destination = Some(the_hash.0);
                     Some(())
@@ -549,7 +515,10 @@ pub static SIGN_HASH_IMPL: SignHashImplT = Action(
                 // And ask the user if this is the key the meant to sign with:
                 mkmvfn(
                     |path: ArrayVec<u32, 10>, destination: &mut Option<ArrayVec<u32, 10>>| {
-                        with_public_keys(&path, |_, pkh: &PKH| {
+                        if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                            return None;
+                        }
+                        with_public_keys(&path, false, |_, pkh: &PKH| {
                             try_option(|| -> Option<()> {
                                 scroller("Sign for Address", |w| Ok(write!(w, "{}", pkh)?))?;
                                 Some(())
@@ -569,7 +538,7 @@ pub static SIGN_HASH_IMPL: SignHashImplT = Action(
             final_accept_prompt(&[&"Sign Transaction Hash?"])?;
 
             // By the time we get here, we've approved and just need to do the signature.
-            let sig = eddsa_sign(path.as_ref()?, &hash.as_ref()?[..]).ok()?;
+            let sig = eddsa_sign(path.as_ref()?, false, &hash.as_ref()?[..]).ok()?;
             let mut rv = ArrayVec::<u8, 128>::new();
             rv.try_extend_from_slice(&sig.0[..]).ok()?;
             *destination = Some(rv);
@@ -971,8 +940,11 @@ const PATH_PARSER: PathParserT = MoveAction(
     mkmvfn(
         |path: <SubDefT as ParserCommon<Bip32Key>>::Returning,
          destination: &mut Option<HasherAndPrivKey>| {
+            if !path.starts_with(&BIP32_PREFIX[0..2]) {
+                return None;
+            }
             set_from_thunk(destination, || {
-                Some((Hasher::new(), Ed25519::from_bip32(&path)))
+                Some((Hasher::new(), Ed25519::derive_from_path(&path)))
             });
             Some(())
         },
@@ -1160,7 +1132,7 @@ impl InterpParser<MakeTransferTxParameters> for MakeTx {
                             *destination = Some(ArrayVec::new());
 
                             let mut add_sig = || -> Option<()> {
-                                let hash = hasher.finalize();
+                                let hash: Base64Hash<32> = hasher.finalize();
                                 let sig = eddsa_sign_int(privkey, &hash.0).ok()?;
                                 destination
                                     .as_mut()?
@@ -1213,7 +1185,7 @@ command_definition! {}
 kadena_cmd_definition! {}
 
 #[inline(never)]
-pub fn get_get_address_state(
+pub fn get_get_address_state<const PROMPT: bool>(
     s: &mut ParsersState,
 ) -> &mut <GetAddressImplT as ParserCommon<Bip32Key>>::State {
     match s {
@@ -1221,14 +1193,14 @@ pub fn get_get_address_state(
         _ => {
             info!("Non-same state found; initializing state.");
             *s = ParsersState::GetAddressState(<GetAddressImplT as ParserCommon<Bip32Key>>::init(
-                &GET_ADDRESS_IMPL,
+                &get_address_impl::<PROMPT>(),
             ));
         }
     }
     match s {
         ParsersState::GetAddressState(ref mut a) => a,
         _ => {
-            panic!("")
+            unreachable!("Should be impossible because assignment right above")
         }
     }
 }
@@ -1249,7 +1221,7 @@ pub fn get_sign_state(
     match s {
         ParsersState::SignState(ref mut a) => a,
         _ => {
-            panic!("")
+            unreachable!("Should be impossible because assignment right above")
         }
     }
 }
@@ -1291,7 +1263,7 @@ pub fn get_make_transfer_tx_state(
     match s {
         ParsersState::MakeTransferTxState(ref mut a) => a,
         _ => {
-            panic!("")
+            unreachable!("Should be impossible because assignment right above")
         }
     }
 }
