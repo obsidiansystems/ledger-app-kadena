@@ -127,7 +127,7 @@ dependencies = [
 [[package]]
 name = "ledger-crypto-helpers"
 version = "0.2.0"
-source = "git+https://github.com/alamgu/ledger-crypto-helpers?branch=kadena#d1467a32ace0da3d813677b584b3baea4c4f30f8"
+source = "git+https://github.com/alamgu/ledger-crypto-helpers#e1e41f64055df391e5b37ec84b2366c8c72c501d"
 dependencies = [
  "arrayvec",
  "base64",
