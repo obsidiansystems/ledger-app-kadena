@@ -14,7 +14,6 @@ use nanos_ui::ui::SingleMessage;
 
 #[allow(dead_code)]
 pub fn app_main() {
-    nanos_ui::ui::popup("Pending Review");
     let mut comm = io::Comm::new();
     let mut states = ParsersState::NoState;
     let mut idle_menu = IdleMenuWithSettings {
