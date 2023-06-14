@@ -1,5 +1,7 @@
 target
 app.json
+Cargo.nix
 
 result
 result-*
+docker-outputs

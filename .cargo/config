@@ -10,7 +10,7 @@ rustflags = [
   "-C", "embed-bitcode",
   "--emit=metadata,link,obj,llvm-ir,llvm-bc"
 ]
-runner = "./speculos-wrapper -m nanosp -k 1.0.3 "
+runner = "./speculos-wrapper -m nanosp -a 1 "
 
 [target.nanos]
 rustflags = [
@@ -30,9 +30,9 @@ rustflags = [
   "-C", "embed-bitcode",
   "--emit=metadata,link,obj,llvm-ir,llvm-bc"
 ]
-runner = "./speculos-wrapper -m nanox "
+runner = "./speculos-wrapper -m nanox -a 5 "
 
 [alias]
 tt = "test --features extra_debug"
 br = "build --release"
-stackcheck = "stack-sizes --release --bin rust-app --target=thumbv6m-none-eabi"
+stackcheck = "stack-sizes --release --bin alamgu-example --target=thumbv6m-none-eabi"

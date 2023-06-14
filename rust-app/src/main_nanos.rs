@@ -1,13 +1,14 @@
 use crate::implementation::*;
 use crate::interface::*;
+use crate::menu::*;
 use crate::settings::*;
 
 use core::fmt::Write;
 use ledger_log::{info, trace};
-use ledger_parser_combinators::interp_parser::{set_from_thunk, OOB};
 use ledger_prompts_ui::write_scroller;
 
-use nanos_sdk::buttons::ButtonEvent;
+use ledger_parser_combinators::interp_parser::OOB;
+use ledger_prompts_ui::{handle_menu_button_event, show_menu};
 use nanos_sdk::io;
 use nanos_ui::ui::SingleMessage;
 
@@ -16,8 +17,11 @@ pub fn app_main() {
     nanos_ui::ui::popup("Pending Review");
     let mut comm = io::Comm::new();
     let mut states = ParsersState::NoState;
-    let mut menu = Menu::new(&[]);
-    let mut settings = Settings::new();
+    let mut idle_menu = IdleMenuWithSettings {
+        idle_menu: IdleMenu::AppMain,
+        settings: Settings::default(),
+    };
+    let mut busy_menu = BusyMenu::Working;
 
     info!("Kadena app {}", env!("CARGO_PKG_VERSION"));
     info!(
@@ -26,139 +30,57 @@ pub fn app_main() {
         core::mem::size_of::<ParsersState>()
     );
 
-    idle_menu(&mut menu);
+    let menu = |states: &ParsersState, idle: &IdleMenuWithSettings, busy: &BusyMenu| match states {
+        ParsersState::NoState => show_menu(idle),
+        _ => show_menu(busy),
+    };
+
+    // Draw some 'welcome' screen
+    menu(&states, &idle_menu, &busy_menu);
     loop {
         info!("Fetching next event.");
         // Wait for either a specific button push to exit the app
         // or an APDU command
         match comm.next_event::<Ins>() {
             io::Event::Command(ins) => {
-                if let ParsersState::NoState = states {
-                    menu.reset()
-                };
-                {
-                    // Using arr is important here. `menu.show(&[ ... ])` doesn't work
-                    let arr = ["Working...", "Cancel"];
-                    menu.show(&arr);
-                }
-                match handle_apdu(&mut comm, ins, &mut states, &mut settings) {
-                    Ok(()) => comm.reply_ok(),
+                trace!("Command received");
+                match handle_apdu(&mut comm, ins, &mut states, &idle_menu.settings) {
+                    Ok(()) => {
+                        trace!("APDU accepted; sending response");
+                        comm.reply_ok();
+                        trace!("Replied");
+                    }
                     Err(sw) => comm.reply(sw),
-                }
-                if let ParsersState::NoState = states {
-                    menu.reset();
-                    idle_menu(&mut menu)
                 };
-            }
-            io::Event::Button(btn) => match menu.update(btn) {
-                Some(0) =>
-                // be consistent others below, state machine
-                {
-                    #[allow(clippy::single_match)]
-                    match states {
-                        ParsersState::SettingsState(v) => {
-                            let new = match v {
-                                0 => 1,
-                                _ => 0,
-                            };
-                            settings.set(&new);
-                            set_from_thunk(&mut states, || ParsersState::SettingsState(new));
-                            settings_menu(&mut menu, new);
-                        }
-                        _ => {}
-                    }
+                // Reset BusyMenu if we are done handling APDU
+                if let ParsersState::NoState = states {
+                    busy_menu = BusyMenu::Working;
                 }
-                Some(1) => match states {
+                menu(&states, &idle_menu, &busy_menu);
+                trace!("Command done");
+            }
+            io::Event::Button(btn) => {
+                trace!("Button received");
+                match states {
                     ParsersState::NoState => {
-                        let v = settings.get();
-                        set_from_thunk(&mut states, || ParsersState::SettingsState(v));
-                        menu.reset();
-                        settings_menu(&mut menu, v);
-                    }
-                    ParsersState::SettingsState(_) => {
-                        set_from_thunk(&mut states, || ParsersState::NoState);
-                        menu.reset();
-                        idle_menu(&mut menu);
+                        if let Some(DoExitApp) = handle_menu_button_event(&mut idle_menu, btn) {
+                            info!("Exiting app at user direction via root menu");
+                            nanos_sdk::exit_app(0)
+                        }
                     }
                     _ => {
-                        info!("Resetting at user direction via busy menu");
-                        set_from_thunk(&mut states, || ParsersState::NoState);
-                        menu.reset();
-                        idle_menu(&mut menu);
+                        if let Some(DoCancel) = handle_menu_button_event(&mut busy_menu, btn) {
+                            info!("Resetting at user direction via busy menu");
+                            reset_parsers_state(&mut states)
+                        }
                     }
-                },
-                Some(2) => {
-                    info!("Exiting app at user direction via root menu");
-                    nanos_sdk::exit_app(0)
-                }
-                _ => match states {
-                    ParsersState::SettingsState(v) => {
-                        settings_menu(&mut menu, v);
-                    }
-                    ParsersState::NoState => {
-                        idle_menu(&mut menu);
-                    }
-                    _ => {}
-                },
-            },
-            io::Event::Ticker => {
-                trace!("Ignoring ticker event");
+                };
+                menu(&states, &idle_menu, &busy_menu);
+                trace!("Button done");
             }
-        }
-
-        // info!("Event handled.");
-    }
-}
-
-#[inline(never)]
-fn idle_menu(menu: &mut Menu) {
-    let arr: [&str; 3] = [
-        concat!("Kadena ", env!("CARGO_PKG_VERSION")),
-        "Blind Signing",
-        "Quit",
-    ];
-    menu.show(&arr);
-}
-
-#[inline(never)]
-fn settings_menu(menu: &mut Menu, v: u8) {
-    match v {
-        0 => {
-            // Using arr is important here. `menu.show(&[ ... ])` doesn't work
-            let arr = ["Enable Blind Signing", "Back"];
-            menu.show(&arr);
-        }
-        1 => {
-            let arr = ["Disable Blind Signing", "Back"];
-            menu.show(&arr);
-        }
-        _ => {}
-    }
-}
-
-#[repr(u8)]
-#[derive(Debug)]
-enum Ins {
-    GetVersion,
-    GetPubkey,
-    Sign,
-    SignHash,
-    MakeTransferTx,
-    GetVersionStr,
-    Exit,
-}
-
-impl From<u8> for Ins {
-    fn from(ins: u8) -> Ins {
-        match ins {
-            0 => Ins::GetVersion,
-            2 => Ins::GetPubkey,
-            3 => Ins::Sign,
-            4 => Ins::SignHash,
-            0x10 => Ins::MakeTransferTx,
-            0xfe => Ins::GetVersionStr,
-            0xff => Ins::Exit,
-            _ => panic!(),
+            io::Event::Ticker => {
+                //trace!("Ignoring ticker event");
+            }
         }
     }
 }
@@ -223,7 +145,7 @@ fn handle_apdu(
     comm: &mut io::Comm,
     ins: Ins,
     parser: &mut ParsersState,
-    settings: &mut Settings,
+    settings: &Settings,
 ) -> Result<(), Reply> {
     info!("entering handle_apdu with command {:?}", ins);
     if comm.rx == 0 {
@@ -239,15 +161,26 @@ fn handle_apdu(
             ]);
             comm.append(b"Kadena");
         }
-        Ins::GetPubkey => {
-            run_parser_apdu::<_, Bip32Key>(parser, get_get_address_state, &GET_ADDRESS_IMPL, comm)?
-        }
+        Ins::VerifyAddress => run_parser_apdu::<_, Bip32Key>(
+            parser,
+            get_get_address_state::<true>,
+            &get_address_impl::<true>(),
+            comm,
+        )?,
+        Ins::GetPubkey => run_parser_apdu::<_, Bip32Key>(
+            parser,
+            get_get_address_state::<false>,
+            &get_address_impl::<false>(),
+            comm,
+        )?,
         Ins::Sign => {
             run_parser_apdu::<_, SignParameters>(parser, get_sign_state, &SIGN_IMPL, comm)?
         }
         Ins::SignHash => {
             if settings.get() != 1 {
-                write_scroller("Blind Signing must", |w| Ok(write!(w, "be enabled")?));
+                write_scroller(false, "Blind Signing must", |w| {
+                    Ok(write!(w, "be enabled")?)
+                });
                 return Err(io::SyscallError::NotSupported.into());
             } else {
                 run_parser_apdu::<_, SignHashParameters>(
@@ -270,44 +203,4 @@ fn handle_apdu(
         Ins::Exit => nanos_sdk::exit_app(0),
     }
     Ok(())
-}
-
-pub struct Menu {
-    screens_len: usize,
-    state: usize,
-}
-
-impl Menu {
-    pub fn new(init_screens: &[&str]) -> Menu {
-        Menu {
-            screens_len: init_screens.len(),
-            state: 0,
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.state = 0;
-    }
-
-    #[inline(never)]
-    pub fn show(&mut self, screens: &[&str]) {
-        self.screens_len = screens.len();
-        self.state = core::cmp::min(self.state, (self.screens_len) - 1);
-        SingleMessage::new(screens[self.state]).show();
-    }
-
-    #[inline(never)]
-    pub fn update(&mut self, btn: ButtonEvent) -> Option<usize> {
-        match btn {
-            ButtonEvent::LeftButtonRelease => {
-                self.state = if self.state > 0 { self.state - 1 } else { 0 }
-            }
-            ButtonEvent::RightButtonRelease => {
-                self.state = core::cmp::min(self.state + 1, (self.screens_len) - 1)
-            }
-            ButtonEvent::BothButtonsRelease => return Some(self.state),
-            _ => (),
-        }
-        None
-    }
 }
