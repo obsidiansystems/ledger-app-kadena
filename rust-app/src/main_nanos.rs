@@ -10,7 +10,6 @@ use ledger_prompts_ui::write_scroller;
 use ledger_parser_combinators::interp_parser::OOB;
 use ledger_prompts_ui::{handle_menu_button_event, show_menu};
 use nanos_sdk::io;
-use nanos_ui::ui::SingleMessage;
 
 #[allow(dead_code)]
 pub fn app_main() {

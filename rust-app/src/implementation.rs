@@ -13,13 +13,12 @@ use ledger_crypto_helpers::eddsa::{
 use ledger_crypto_helpers::hasher::{Base64Hash, Blake2b, Hasher};
 use ledger_log::{info, trace};
 use ledger_parser_combinators::core_parsers::Alt;
-use ledger_parser_combinators::endianness::*;
 use ledger_parser_combinators::interp_parser::{
     set_from_thunk, Action, DefaultInterp, DropInterp, InterpParser, ObserveLengthedBytes,
     SubInterp, OOB,
 };
 use ledger_parser_combinators::json::Json;
-use ledger_prompts_ui::{final_accept_prompt, mk_prompt_write, PromptWrite, ScrollerError};
+use ledger_prompts_ui::{final_accept_prompt, mk_prompt_write, ScrollerError};
 
 use core::convert::TryFrom;
 use core::ops::Deref;
