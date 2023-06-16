@@ -1201,8 +1201,7 @@ describe('Create Tx tests', function() {
          { "header": "From", "prompt": "k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995", "paginate": true },
          { "header": "To", "prompt": "k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790", "paginate": true },
          { "header": "Amount", "prompt": "1.23" },
-         { "header": "Paying Gas (1/2)", "prompt": "At most 2300" },
-         { "header": "Paying Gas (2/2)", "prompt": "Price 1.0e-6" },
+         { "header": "Max Gas", "prompt": "KDA 0.0023" },
          {"text": "Sign Transaction?", "x": 19, "y": 11,},
          {"text": "Confirm", "x": 43, "y": 11,}
        ]
@@ -1228,8 +1227,7 @@ describe('Create Tx tests', function() {
          { "header": "From", "prompt": "k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995", "paginate": true },
          { "header": "To", "prompt": "k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790", "paginate": true },
          { "header": "Amount", "prompt": "23.67" },
-         { "header": "Paying Gas (1/2)", "prompt": "At most 2300" },
-         { "header": "Paying Gas (2/2)", "prompt": "Price 1.0e-6" },
+         { "header": "Max Gas", "prompt": "KDA 0.0023" },
          {"text": "Sign Transaction?", "x": 19, "y": 11,},
          {"text": "Confirm", "x": 43, "y": 11,}
        ]
@@ -1257,8 +1255,7 @@ describe('Create Tx tests', function() {
          { "header": "To", "prompt": "k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790", "paginate": true },
          { "header": "To Chain", "prompt": "2" },
          { "header": "Amount", "prompt": "23.67" },
-         { "header": "Paying Gas (1/2)", "prompt": "At most 2300" },
-         { "header": "Paying Gas (2/2)", "prompt": "Price 1.0e-6" },
+         { "header": "Max Gas", "prompt": "KDA 0.0023" },
          {"text": "Sign Transaction?", "x": 19, "y": 11,},
          {"text": "Confirm", "x": 43, "y": 11,}
        ]
@@ -1287,8 +1284,7 @@ describe('Create Tx tests', function() {
          { "header": "From", "prompt": "k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995", "paginate": true },
          { "header": "To", "prompt": "k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790", "paginate": true },
          { "header": "Amount", "prompt": "1.23" },
-         { "header": "Paying Gas (1/2)", "prompt": "At most 2300" },
-         { "header": "Paying Gas (2/2)", "prompt": "Price 1.0e-6" },
+         { "header": "Max Gas", "prompt": "KDA 0.0023" },
          {"text": "Sign Transaction?", "x": 19, "y": 11,},
          {"text": "Confirm", "x": 43, "y": 11,}
        ]
@@ -1317,8 +1313,7 @@ describe('Create Tx tests', function() {
          { "header": "From", "prompt": "k:9ed54a1020ebbbf8bbe425346498434edd79e4cd36fe874ea58853e78eab4995", "paginate": true },
          { "header": "To", "prompt": "k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790", "paginate": true },
          { "header": "Amount", "prompt": "23.67" },
-         { "header": "Paying Gas (1/2)", "prompt": "At most 2300" },
-         { "header": "Paying Gas (2/2)", "prompt": "Price 1.0e-6" },
+         { "header": "Max Gas", "prompt": "KDA 0.0023" },
          {"text": "Sign Transaction?", "x": 19, "y": 11,},
          {"text": "Confirm", "x": 43, "y": 11,}
        ]
@@ -1348,8 +1343,7 @@ describe('Create Tx tests', function() {
          { "header": "To", "prompt": "k:83934c0f9b005f378ba3520f9dea952fb0a90e5aa36f1b5ff837d9b30c471790", "paginate": true },
          { "header": "To Chain", "prompt": "2" },
          { "header": "Amount", "prompt": "23.67" },
-         { "header": "Paying Gas (1/2)", "prompt": "At most 2300" },
-         { "header": "Paying Gas (2/2)", "prompt": "Price 1.0e-6" },
+         { "header": "Max Gas", "prompt": "KDA 0.0023" },
          {"text": "Sign Transaction?", "x": 19, "y": 11,},
          {"text": "Confirm", "x": 43, "y": 11,}
        ]
