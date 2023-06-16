@@ -818,7 +818,11 @@ fn handle_tx_param_1(
     if tx_type == 2 {
         scroller("To Chain", |w| Ok(write!(w, "{}", recipient_chain_str)?))?;
     }
-    scroller("Amount", |w| Ok(write!(w, "{}", amount_str)?))?;
+    if namespace_str.is_empty() {
+        scroller("Amount", |w| Ok(write!(w, "KDA {}", amount_str)?))?;
+    } else {
+        scroller("Amount", |w| Ok(write!(w, "{}", amount_str)?))?;
+    }
     Some(())
 }
 
