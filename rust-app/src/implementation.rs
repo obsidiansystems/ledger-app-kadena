@@ -13,13 +13,12 @@ use ledger_crypto_helpers::eddsa::{
 use ledger_crypto_helpers::hasher::{Base64Hash, Blake2b, Hasher};
 use ledger_log::{info, trace};
 use ledger_parser_combinators::core_parsers::Alt;
-use ledger_parser_combinators::endianness::*;
 use ledger_parser_combinators::interp_parser::{
     set_from_thunk, Action, DefaultInterp, DropInterp, InterpParser, ObserveLengthedBytes,
     SubInterp, OOB,
 };
 use ledger_parser_combinators::json::Json;
-use ledger_prompts_ui::{final_accept_prompt, mk_prompt_write, PromptWrite, ScrollerError};
+use ledger_prompts_ui::{final_accept_prompt, mk_prompt_write, ScrollerError};
 
 use core::convert::TryFrom;
 use core::ops::Deref;
@@ -819,7 +818,11 @@ fn handle_tx_param_1(
     if tx_type == 2 {
         scroller("To Chain", |w| Ok(write!(w, "{}", recipient_chain_str)?))?;
     }
-    scroller("Amount", |w| Ok(write!(w, "{}", amount_str)?))?;
+    if namespace_str.is_empty() {
+        scroller("Amount", |w| Ok(write!(w, "KDA {}", amount_str)?))?;
+    } else {
+        scroller("Amount", |w| Ok(write!(w, "{}", amount_str)?))?;
+    }
     Some(())
 }
 
@@ -886,13 +889,12 @@ fn handle_tx_params_2(
     // The JSON struct ends here
     write!(hasher, "}}").ok()?;
 
-    scroller("Paying Gas (1/2)", |w| {
-        Ok(write!(w, "At most {}", from_utf8(gas_limit)?,)?)
-    })?;
-    scroller("Paying Gas (2/2)", |w| {
-        Ok(write!(w, "Price {}", from_utf8(gas_price)?)?)
-    })?;
-    Some(())
+    use core::str::FromStr;
+    let gas_limit_f64: f64 = f64::from_str(gas_limit_str).ok()?;
+    let gas_price_f64: f64 = f64::from_str(gas_price_str).ok()?;
+    scroller("Max Gas", |w| {
+        Ok(write!(w, "KDA {}", gas_limit_f64 * gas_price_f64)?)
+    })
 }
 
 fn check_decimal(s: &str) -> Option<()> {

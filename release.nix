@@ -11,7 +11,7 @@ in {
 }
   # Hack until CI will traverse contents
   // lib.mapAttrs' (n: lib.nameValuePair ("linux--" + n)) perSystem.x86_64-linux
-  // lib.mapAttrs' (n: lib.nameValuePair ("linux--nanos--" + n)) (builtins.removeAttrs perSystem.x86_64-linux.nanos ["test-with-logging"])
+  // lib.mapAttrs' (n: lib.nameValuePair ("linux--nanos--" + n)) (builtins.removeAttrs perSystem.x86_64-linux.nanos ["test" "test-with-logging"])
   // lib.mapAttrs' (n: lib.nameValuePair ("linux--nanox--" + n)) perSystem.x86_64-linux.nanox
   // lib.mapAttrs' (n: lib.nameValuePair ("linux--nanosplus--" + n)) perSystem.x86_64-linux.nanosplus
   // lib.mapAttrs' (n: lib.nameValuePair ("macos--" + n)) perSystem.x86_64-darwin
