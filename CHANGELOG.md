@@ -1,3 +1,8 @@
+## 0.2.4
+
+* Minor changes to the prompts of MAKE_TRANSFER_TX APDU.
+* Bump nanos_sdk
+
 ## 0.2.3
 
 * Add VERIFY_ADDRESS APDU, which prompts user showing the address.
