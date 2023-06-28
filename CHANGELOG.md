@@ -1,3 +1,7 @@
+## 0.2.5
+
+* Revert the "Max Gas" calculation
+
 ## 0.2.4
 
 * Minor changes to the prompts of MAKE_TRANSFER_TX APDU.
