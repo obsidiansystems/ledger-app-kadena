@@ -889,11 +889,11 @@ fn handle_tx_params_2(
     // The JSON struct ends here
     write!(hasher, "}}").ok()?;
 
-    scroller("Paying Gas (1/2)", |w| {
-        Ok(write!(w, "At most {}", from_utf8(gas_limit)?,)?)
+    scroller("Gas Limit (1/2)", |w| {
+        Ok(write!(w, "{} Max", from_utf8(gas_limit)?,)?)
     })?;
-    scroller("Paying Gas (2/2)", |w| {
-        Ok(write!(w, "Price {}", from_utf8(gas_price)?)?)
+    scroller("Gas Price (2/2)", |w| {
+        Ok(write!(w, "KDA {}", from_utf8(gas_price)?)?)
     })?;
     Some(())
 }
