@@ -889,12 +889,13 @@ fn handle_tx_params_2(
     // The JSON struct ends here
     write!(hasher, "}}").ok()?;
 
-    use core::str::FromStr;
-    let gas_limit_f64: f64 = f64::from_str(gas_limit_str).ok()?;
-    let gas_price_f64: f64 = f64::from_str(gas_price_str).ok()?;
-    scroller("Max Gas", |w| {
-        Ok(write!(w, "KDA {}", gas_limit_f64 * gas_price_f64)?)
-    })
+    scroller("Gas Limit (1/2)", |w| {
+        Ok(write!(w, "{} Max", from_utf8(gas_limit)?,)?)
+    })?;
+    scroller("Gas Price (2/2)", |w| {
+        Ok(write!(w, "KDA {}", from_utf8(gas_price)?)?)
+    })?;
+    Some(())
 }
 
 fn check_decimal(s: &str) -> Option<()> {
