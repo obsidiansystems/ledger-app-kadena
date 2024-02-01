@@ -29,7 +29,7 @@ use ledger_parser_combinators::json::*;
 use ledger_parser_combinators::json_interp::*;
 use zeroize::Zeroizing;
 
-use nanos_sdk::ecc::{ECPrivateKey, Ed25519, SeedDerive};
+use ledger_device_sdk::ecc::{ECPrivateKey, Ed25519, SeedDerive};
 
 #[allow(clippy::upper_case_acronyms)]
 type PKH = Ed25519RawPubKeyAddress;
