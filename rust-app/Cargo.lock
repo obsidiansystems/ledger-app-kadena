@@ -147,15 +147,14 @@ dependencies = [
 
 [[package]]
 name = "ledger-parser-combinators"
-version = "0.1.0"
-ource = "git+https://github.com/alamgu/ledger-parser-combinators#4b2d34dddf17ab2489b8ce095a9481449bf959fc"
+version = "0.1.1"
+source = "git+https://github.com/alamgu/ledger-parser-combinators#84e4b9bb085fbb0867d44e6e153dd7a83c049a90"
 dependencies = [
  "arrayvec",
  "bstringify",
  "enum-init",
  "generic-array",
  "ledger-log",
- "nanos_sdk",
  "paste",
 ]
 
