@@ -56,11 +56,17 @@ overflow-checks = false
 opt-level = 3
 overflow-checks = false
 
-[package.metadata.nanos]
+[package.metadata.ledger]
 name = "Kadena"
-api_level = "1"
 path = ["44'/626'"]
 curve = ["ed25519"]
 flags = "0"
-icon = "kadena.gif"
-icon_small = "kadena-small.gif"
+
+[package.metadata.ledger.nanos]
+icon = "crab.gif"
+
+[package.metadata.ledger.nanox]
+icon = "kadena-small.gif"
+
+[package.metadata.ledger.nanosplus]
+icon = "kadena-small.gif"
