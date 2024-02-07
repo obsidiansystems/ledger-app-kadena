@@ -1,3 +1,7 @@
+## 0.2.6
+
+* Update SDK
+
 ## 0.2.5
 
 * Revert the "Max Gas" calculation.
