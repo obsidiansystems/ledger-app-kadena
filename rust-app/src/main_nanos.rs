@@ -4,12 +4,12 @@ use crate::menu::*;
 use crate::settings::*;
 
 use core::fmt::Write;
+use ledger_device_sdk::io;
 use ledger_log::{info, trace};
 use ledger_prompts_ui::write_scroller;
 
 use ledger_parser_combinators::interp_parser::OOB;
 use ledger_prompts_ui::{handle_menu_button_event, show_menu};
-use ledger_device_sdk::io;
 
 #[allow(dead_code)]
 pub fn app_main() {
