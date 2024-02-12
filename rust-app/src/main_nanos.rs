@@ -5,6 +5,7 @@ use crate::settings::*;
 
 use core::fmt::Write;
 use ledger_device_sdk::io;
+use ledger_device_sdk::uxapp::{UxEvent, BOLOS_UX_OK};
 use ledger_log::{info, trace};
 use ledger_prompts_ui::write_scroller;
 
@@ -77,6 +78,11 @@ pub fn app_main() {
                 trace!("Button done");
             }
             io::Event::Ticker => {
+                if UxEvent::Event.request() != BOLOS_UX_OK {
+                    UxEvent::block();
+                    // Redisplay application menu here
+                    menu(&states, &idle_menu, &busy_menu);
+                }
                 //trace!("Ignoring ticker event");
             }
         }
