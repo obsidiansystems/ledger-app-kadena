@@ -1,6 +1,8 @@
 ## 0.2.6
 
 * Update SDK
+* Allow the app to auto lock for PIN, and show screensaver.
+* Make the settings persist across app restarts.
 
 ## 0.2.5
 
