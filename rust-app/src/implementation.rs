@@ -29,7 +29,7 @@ use ledger_parser_combinators::json::*;
 use ledger_parser_combinators::json_interp::*;
 use zeroize::Zeroizing;
 
-use nanos_sdk::ecc::{ECPrivateKey, Ed25519, SeedDerive};
+use ledger_device_sdk::ecc::{ECPrivateKey, Ed25519, SeedDerive};
 
 #[allow(clippy::upper_case_acronyms)]
 type PKH = Ed25519RawPubKeyAddress;
@@ -44,7 +44,8 @@ fn mkstr(v: Option<&[u8]>) -> Result<&str, ScrollerError> {
 pub type GetAddressImplT = impl InterpParser<Bip32Key, Returning = ArrayVec<u8, 128_usize>>;
 
 // Need a path of length 5, as make_bip32_path panics with smaller paths
-pub const BIP32_PREFIX: [u32; 5] = nanos_sdk::ecc::make_bip32_path(b"m/44'/626'/123'/0'/0'");
+pub const BIP32_PREFIX: [u32; 5] =
+    ledger_device_sdk::ecc::make_bip32_path(b"m/44'/626'/123'/0'/0'");
 
 pub const fn get_address_impl<const PROMPT: bool>() -> GetAddressImplT {
     Action(
