@@ -84,7 +84,7 @@ jobs:
       - name: Install yarn
         uses: borales/actions-yarn@v5
         with:
-          cmd: install # will run `yarn install` command
+          cmd: install --frozen-lockfile # will run `yarn install` command
           dir: 'ts-tests'
 
       - name: Install tests dependencies
