@@ -72,7 +72,7 @@ jobs:
       - name: Install yarn
         uses: borales/actions-yarn@v4
         with:
-          cmd: install # will run `yarn install` command
+          cmd: check
           dir: 'ts-tests'
 
       - name: Install tests dependencies
@@ -87,4 +87,5 @@ jobs:
           speculos --api-port 5005 ${{ needs.call_get_app_metadata.outputs.build_directory }}/build/${BIN_DIR_NAME}/bin/app.elf --display headless &
           sleep 5
           cd ts-tests
+          yarn install --frozen-lockfile
           yarn run test
