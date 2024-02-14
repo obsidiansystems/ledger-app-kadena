@@ -13,5 +13,4 @@ on:
 jobs:
   functional_tests:
     name: Run tests
-    needs: build_application
     uses: ./.github/workflows/functional_tests.yml
