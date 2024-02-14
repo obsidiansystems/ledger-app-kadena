@@ -595,10 +595,10 @@ impl ParserCommon<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
 }
 impl JsonInterp<JsonArray<JsonAny>> for KadenaCapabilityArgsInterp {
     #[inline(never)]
-    fn parse<'a, 'b>(
+    fn parse(
         &self,
-        (ref mut state, ref mut scratch, ref mut arg_count): &'b mut Self::State,
-        token: JsonToken<'a>,
+        (ref mut state, ref mut scratch, ref mut arg_count): &mut Self::State,
+        token: JsonToken<'_>,
         destination: &mut Option<Self::Returning>,
     ) -> Result<(), Option<OOB>> {
         let str_interp = OrDropAny(JsonStringAccumulate::<ARG_ARRAY_SIZE>);
@@ -705,7 +705,7 @@ fn handle_tx_param_1(
         return None;
     }
     for (_, c) in recipient_str.char_indices() {
-        if !matches!(c, '0'..='9' | 'A'..='F' | 'a'..='f') {
+        if !c.is_ascii_hexdigit() {
             return None;
         }
     }
@@ -860,7 +860,7 @@ fn handle_tx_params_2(
                     return None;
                 }
             }
-            if !matches!(c, '0'..='9') {
+            if !c.is_ascii_digit() {
                 if c == '.' && !decimal {
                     decimal = true;
                     continue;
@@ -905,7 +905,7 @@ fn check_decimal(s: &str) -> Option<()> {
     }
     let mut decimal = false;
     for (_, c) in s.char_indices() {
-        if !matches!(c, '0'..='9') {
+        if !c.is_ascii_digit() {
             if c == '.' && !decimal {
                 decimal = true;
                 continue;
@@ -921,7 +921,7 @@ fn check_positive_integer(s: &str) -> Option<()> {
         return None;
     }
     for (_, c) in s.char_indices() {
-        if !matches!(c, '0'..='9') {
+        if !c.is_ascii_digit() {
             return None;
         }
     }
@@ -981,9 +981,9 @@ const RECIPIENT_AMOUNT_PARSER: RecipientAmountT
             Some((ref mut hasher, privkey)) => {
                 let mut pkh_str: ArrayString<64> = ArrayString::new();
                 {
-                    with_public_keys_int(privkey, |_: &_, pkh: &PKH| { try_option(|| -> Option<()> {
+                    with_public_keys_int(privkey, |_: &_, pkh: &PKH| { try_option({
                         write!(mk_prompt_write(&mut pkh_str), "{}", pkh).ok()
-                    }())}).ok()?;
+                    })}).ok()?;
                 }
                 handle_tx_param_1(&pkh_str, hasher, tx_type?, recipient.as_ref()?, recipient_chain.as_ref()?, amount.as_ref()?, network.as_ref()?, namespace.as_ref()?, mod_name.as_ref()?)?;
 
@@ -1017,9 +1017,9 @@ const META_NONCE_PARSER: MetaNonceT =
                         let mut pkh_str: ArrayString<64> = ArrayString::new();
                         {
                             with_public_keys_int(privkey, |_: &_, pkh: &PKH| {
-                                try_option(|| -> Option<()> {
+                                try_option({
                                     write!(mk_prompt_write(&mut pkh_str), "{}", pkh).ok()
-                                }())
+                                })
                             })
                             .ok()?;
                         }
@@ -1067,9 +1067,9 @@ impl ParserCommon<MakeTransferTxParameters> for MakeTx {
 
 impl InterpParser<MakeTransferTxParameters> for MakeTx {
     #[inline(never)]
-    fn parse<'a, 'b>(
+    fn parse<'a>(
         &self,
-        (ref mut hasher_and_privkey, ref mut state): &'b mut Self::State,
+        (ref mut hasher_and_privkey, ref mut state): &mut Self::State,
         chunk: &'a [u8],
         destination: &mut Option<Self::Returning>,
     ) -> ParseResult<'a> {
