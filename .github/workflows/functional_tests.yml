@@ -14,10 +14,6 @@ on:
         required: false
         default: ${{ github.ref }}
         type: string
-      download_app_binaries_artifact:
-        description: 'The name of the artifact containing the application binary file(s) to be tested. Required'
-        required: true
-        type: string
       run_for_devices:
         description: |
           The list of device(s) on which the test will run.
@@ -68,12 +64,6 @@ jobs:
           ref: ${{ inputs.app_branch_name }}
           submodules: recursive
 
-      - name: Download app binaries
-        uses: actions/download-artifact@v3
-        with:
-          name: ${{ inputs.download_app_binaries_artifact }}
-          path: ${{ needs.call_get_app_metadata.outputs.build_directory }}/build/
-
       - name: Set Node.js 20.x
         uses: actions/setup-node@v3
         with:
@@ -82,7 +72,7 @@ jobs:
       - name: Install yarn
         uses: borales/actions-yarn@v4
         with:
-          cmd: install # will run `yarn install` command
+          cmd: help
           dir: 'ts-tests'
 
       - name: Install tests dependencies
@@ -97,4 +87,15 @@ jobs:
           speculos --api-port 5005 ${{ needs.call_get_app_metadata.outputs.build_directory }}/build/${BIN_DIR_NAME}/bin/app.elf --display headless &
           sleep 5
           cd ts-tests
-          yarn run test
+          stat yarn.lock
+          ls
+          retries=0
+          max_retries=10
+          while [ $retries -lt $max_retries ]; do
+            yarn install && break || {
+              echo "Attempt $retries failed. Retrying..."
+              retries=$((retries+1))
+              sleep  1 # optional delay between retries
+            }
+          done
+          stat yarn.lock

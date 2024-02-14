@@ -1,4 +1,3 @@
-import SpeculosTransport from '@ledgerhq/hw-transport-node-speculos';
 import Axios from 'axios';
 import Transport from "./http-transport";
 import Kda from "hw-app-kda";
