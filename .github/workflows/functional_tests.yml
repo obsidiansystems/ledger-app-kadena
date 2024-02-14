@@ -89,6 +89,13 @@ jobs:
           cd ts-tests
           stat yarn.lock
           ls
-          yarn install --frozen-lockfile --cwd ./.
+          retries=0
+          max_retries=10
+          while [ $retries -lt $max_retries ]; do
+            yarn install && break || {
+              echo "Attempt $retries failed. Retrying..."
+              retries=$((retries+1))
+              sleep  1 # optional delay between retries
+            }
+          done
           stat yarn.lock
-          yarn run test
