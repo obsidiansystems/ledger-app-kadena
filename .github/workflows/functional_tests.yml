@@ -72,7 +72,7 @@ jobs:
       - name: Install yarn
         uses: borales/actions-yarn@v4
         with:
-          cmd: check
+          cmd: help
           dir: 'ts-tests'
 
       - name: Install tests dependencies
